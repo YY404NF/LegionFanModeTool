@@ -16,9 +16,6 @@ internal enum FanMode
 
 internal static class FanModeExtensions
 {
-    /// <summary>未选中模式的图标颜色。</summary>
-    public static readonly Color InactiveColor = Color.FromArgb(0x95, 0x95, 0x95);
-
     extension(FanMode mode)
     {
         public string DisplayName => mode switch
@@ -29,13 +26,20 @@ internal static class FanModeExtensions
             _ => "未知",
         };
 
-        /// <summary>选中时的颜色，取自联想电脑管家散热模式页面。</summary>
-        public Color AccentColor => mode switch
+        /// <summary>左键单击时切换到的下一个模式：安静 → 均衡 → 野兽 → 安静。</summary>
+        public FanMode Next => mode switch
+        {
+            FanMode.Quiet => FanMode.Balanced,
+            FanMode.Balanced => FanMode.Performance,
+            _ => FanMode.Quiet,
+        };
+
+        /// <summary>品牌色，取自联想电脑管家散热模式页面；均衡和未知模式没有，选中颜色由 <see cref="Theme"/> 决定。</summary>
+        public Color? BrandColor => mode switch
         {
             FanMode.Quiet => Color.FromArgb(0x25, 0x7E, 0xFF),
-            FanMode.Balanced => Color.White,
             FanMode.Performance => Color.FromArgb(0xFF, 0x52, 0x52),
-            _ => InactiveColor,
+            _ => null,
         };
 
         /// <summary>打开嵌入的图案 SVG（Assets 目录，还原自联想电脑管家）。未知模式使用均衡的图案。</summary>

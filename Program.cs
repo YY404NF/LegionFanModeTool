@@ -14,6 +14,7 @@ internal static class Program
         if (!isFirstInstance)
             return;
 
+        CrashLog.InstallProcessHandlers();
         WinRT.ComWrappersSupport.InitializeComWrappers();
         Application.Start(static parameters =>
         {

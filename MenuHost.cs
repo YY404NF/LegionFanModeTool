@@ -46,6 +46,9 @@ internal sealed partial class MenuHost : IDisposable
         DwmSetWindowAttribute(_hwnd, DwmwaBorderColor, DwmwaColorNone, sizeof(uint));
     }
 
+    /// <summary>菜单所在屏幕的缩放比例；窗口加载前用系统 DPI。</summary>
+    public double RasterizationScale => _root.XamlRoot?.RasterizationScale ?? GetDpiForSystem() / 96.0;
+
     /// <summary>在屏幕物理像素坐标处显示菜单。</summary>
     public async Task ShowAsync(PointInt32 position)
     {
@@ -87,6 +90,9 @@ internal sealed partial class MenuHost : IDisposable
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool SetForegroundWindow(nint hwnd);
+
+    [LibraryImport("user32.dll")]
+    private static partial uint GetDpiForSystem();
 
     [LibraryImport("dwmapi.dll")]
     private static partial int DwmSetWindowAttribute(nint hwnd, uint attribute, in uint value, int size);

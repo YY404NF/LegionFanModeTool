@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing;
 using System.Threading.Tasks;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -10,7 +11,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 namespace LegionFanModeTool;
 
 /// <summary>
-/// 托盘程序：左键在安静/均衡间切换，右键菜单可选全部模式、开机自启和退出。
+/// 托盘程序：左键按 安静 → 均衡 → 野兽 循环切换，右键菜单可选全部模式、开机自启和退出。
 /// 模式变化通过订阅 BIOS 事件获得；风扇转速和温度只在鼠标悬停在图标上时读取。
 /// </summary>
 internal sealed class TrayApp : IDisposable
@@ -26,7 +27,7 @@ internal sealed class TrayApp : IDisposable
     private readonly MenuHost _menuHost;
     private readonly ModeWatcher _modeWatcher = new();
     private readonly Dictionary<FanMode, MenuFlyoutItem> _modeItems = [];
-    private readonly Dictionary<(FanMode Mode, bool Active), SvgImageSource> _menuIcons = [];
+    private readonly Dictionary<(FanMode Mode, Color Color, double Scale), WriteableBitmap> _menuIcons = [];
     private readonly MenuFlyoutItem _autoStartItem = new() { Text = "开机自启" };
     private readonly Stopwatch _sinceSensorRead = new();
     private DispatcherQueueTimer? _pollTimer;
@@ -39,11 +40,7 @@ internal sealed class TrayApp : IDisposable
     public TrayApp()
     {
         foreach (var mode in MenuModes)
-        {
-            _menuIcons[(mode, true)] = MenuIcons.Create(mode, mode.AccentColor);
-            _menuIcons[(mode, false)] = MenuIcons.Create(mode, FanModeExtensions.InactiveColor);
             _modeItems[mode] = CreateModeItem(mode);
-        }
 
         _autoStartItem.Click += (_, _) => ToggleAutoStart();
         var exitItem = new MenuFlyoutItem { Text = "退出" };
@@ -56,14 +53,19 @@ internal sealed class TrayApp : IDisposable
         menu.Items.Add(_autoStartItem);
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(exitItem);
-        menu.Opening += (_, _) => SetChecked(_autoStartItem, AutoStart.IsEnabled());
+        menu.Opening += (_, _) =>
+        {
+            UpdateMenuIcons();
+            SetChecked(_autoStartItem, AutoStart.IsEnabled());
+        };
         _menuHost = new MenuHost(menu);
 
-        _trayIcon.Selected += () => _ = SwitchModeAsync(_currentMode == FanMode.Quiet ? FanMode.Balanced : FanMode.Quiet);
+        _trayIcon.Selected += () => _ = SwitchModeAsync(_currentMode.Next);
         _trayIcon.ContextMenuRequested += position => _ = _menuHost.ShowAsync(position);
         _trayIcon.Hovered += () => _ = RefreshSensorsAsync(force: false);
+        _trayIcon.ThemeChanged += UpdateTrayIcon;
         _trayIcon.ToolTip = "散热模式：读取中…";
-        _trayIcon.Icon = TrayIconRenderer.Create(_currentMode);
+        UpdateTrayIcon();
         _trayIcon.Show();
 
         StartWatching();
@@ -93,7 +95,7 @@ internal sealed class TrayApp : IDisposable
         var item = new MenuFlyoutItem
         {
             Text = mode.DisplayName,
-            Icon = new ImageIcon { Source = _menuIcons[(mode, false)] },
+            Icon = new ImageIcon(),
         };
         item.Click += (_, _) => _ = SwitchModeAsync(mode);
         return item;
@@ -170,11 +172,27 @@ internal sealed class TrayApp : IDisposable
             return;
 
         _currentMode = mode;
-        // 当前模式用彩色图标表示，其余为灰色
-        foreach (var (itemMode, item) in _modeItems)
-            ((ImageIcon)item.Icon).Source = _menuIcons[(itemMode, itemMode == mode)];
-        _trayIcon.Icon = TrayIconRenderer.Create(mode);
+        UpdateMenuIcons();
+        UpdateTrayIcon();
         UpdateToolTip();
+    }
+
+    /// <summary>托盘图标和原生图标一样单色，颜色跟随任务栏主题。</summary>
+    private void UpdateTrayIcon() =>
+        _trayIcon.Icon = IconRenderer.CreateTrayIcon(_currentMode, Theme.Foreground(Theme.IsTaskbarLight));
+
+    /// <summary>菜单图标跟随应用主题：未选中用文字颜色，当前模式用强调色。</summary>
+    private void UpdateMenuIcons()
+    {
+        var light = Theme.IsAppLight;
+        var scale = _menuHost.RasterizationScale;
+        foreach (var (mode, item) in _modeItems)
+        {
+            var color = mode == _currentMode ? Theme.ActiveColor(mode, light) : Theme.Foreground(light);
+            if (!_menuIcons.TryGetValue((mode, color, scale), out var source))
+                _menuIcons[(mode, color, scale)] = source = MenuIcons.Create(mode, color, scale);
+            ((ImageIcon)item.Icon).Source = source;
+        }
     }
 
     private void UpdateToolTip()

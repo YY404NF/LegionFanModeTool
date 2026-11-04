@@ -17,6 +17,8 @@ public sealed partial class App : Application, IXamlMetadataProvider
     private readonly XamlControlsXamlMetaDataProvider _provider = new();
     private TrayApp? _tray; // 持有引用，托盘程序随应用存活
 
+    public App() => CrashLog.InstallXamlHandler(this);
+
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
         Resources.MergedDictionaries.Add(new XamlControlsResources());

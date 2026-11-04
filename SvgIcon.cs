@@ -10,8 +10,9 @@ using System.Xml.Linq;
 namespace LegionFanModeTool;
 
 /// <summary>
-/// 极简 SVG 渲染器，只支持图标用到的子集：path（全部路径命令）、translate、
-/// fill-rule 和由 circle 构成的 clipPath。用 GDI+ 按目标像素尺寸直接绘制矢量。
+/// 极简 SVG 渲染器，只支持图标用到的子集：填充的 path（全部路径命令）、fill-rule、
+/// translate 和由 circle 构成的 clipPath。颜色统一用绘制时传入的颜色。
+/// 用 GDI+ 按目标像素尺寸直接绘制矢量。
 /// </summary>
 internal sealed class SvgIcon
 {

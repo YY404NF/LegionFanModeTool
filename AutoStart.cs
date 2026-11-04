@@ -3,7 +3,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Security;
 using System.Security.Principal;
-using LegionFanModeTool.TaskScheduler;
+using LegionFanModeTool.Interop;
 
 namespace LegionFanModeTool;
 

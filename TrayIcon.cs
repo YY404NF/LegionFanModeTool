@@ -31,6 +31,9 @@ internal sealed unsafe partial class TrayIcon : IDisposable
     /// <summary>鼠标在图标上移动（提示即将显示或正在显示），会频繁触发。</summary>
     public event Action? Hovered;
 
+    /// <summary>系统的亮色/暗色模式或强调色发生变化。</summary>
+    public event Action? ThemeChanged;
+
     /// <summary>托盘图标。设置新图标后旧图标会被释放。</summary>
     public Icon? Icon
     {
@@ -63,9 +66,11 @@ internal sealed unsafe partial class TrayIcon : IDisposable
             throw new InvalidOperationException($"CreateWindowEx 失败：{Marshal.GetLastPInvokeError()}");
         SetWindowLongPtrW(_hwnd, GwlpUserData, GCHandle.ToIntPtr(_self));
 
-        // 资源管理器重启后会广播 TaskbarCreated。本程序以管理员身份运行，需要允许它穿过 UIPI。
+        // 资源管理器重启后会广播 TaskbarCreated，主题变化会广播 WM_SETTINGCHANGE。
+        // 本程序以管理员身份运行，需要允许它们穿过 UIPI。
         _taskbarCreatedMessage = RegisterWindowMessageW("TaskbarCreated");
         ChangeWindowMessageFilterEx(_hwnd, _taskbarCreatedMessage, MsgFltAllow, null);
+        ChangeWindowMessageFilterEx(_hwnd, WmSettingChange, MsgFltAllow, null);
     }
 
     public void Show()
@@ -151,6 +156,13 @@ internal sealed unsafe partial class TrayIcon : IDisposable
             return 0;
         }
 
+        if (msg == WmSettingChange && lParam != 0
+            && new string((char*)lParam) == "ImmersiveColorSet")
+        {
+            ThemeChanged?.Invoke();
+            return 0;
+        }
+
         if (msg == _taskbarCreatedMessage && msg != 0)
         {
             Show();
@@ -191,6 +203,7 @@ internal sealed unsafe partial class TrayIcon : IDisposable
     private const uint NinSelect = 0x400, NinKeySelect = 0x401;
     private const uint WmContextMenu = 0x007B;
     private const uint WmMouseMove = 0x0200;
+    private const uint WmSettingChange = 0x001A;
     private const uint MsgFltAllow = 1;
     private const int GwlpUserData = -21;
 

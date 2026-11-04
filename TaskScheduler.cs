@@ -2,7 +2,7 @@ using System;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.Marshalling;
 
-namespace LegionFanModeTool.TaskScheduler;
+namespace LegionFanModeTool.Interop;
 
 // 任务计划程序 2.0 的 COM 接口（taskschd.h），用 COM 源代码生成器声明，对裁剪安全。
 // COM 按虚函数表的位置调用方法，所以顺序必须与头文件一致；用不到的方法只占位，签名无关紧要。
