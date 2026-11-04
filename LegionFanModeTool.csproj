@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net11.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+
+    <!-- 发布为单个 exe：自带裁剪并压缩过的 .NET 运行时，Windows App SDK 使用系统已安装的运行时。
+         Windows App SDK 的单文件检查是为它自带运行时的发布方式设计的，这里不适用，关掉它；
+         程序不含 XAML 文件，也就不需要 resources.pri 和全部解压到磁盘。 -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <PublishTrimmed>true</PublishTrimmed>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <!-- System.Management 通过内置 COM 互操作调用 WMI -->
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <!-- 上面两项来自 System.Management：它本身不兼容裁剪（已整个保留），忽略它和内置 COM 互操作产生的裁剪警告 -->
+    <NoWarn>$(NoWarn);IL2026;IL2104</NoWarn>
+    <WindowsAppSDKSingleFileVerifyConfiguration>false</WindowsAppSDKSingleFileVerifyConfiguration>
+    <IncludeAllContentForSelfExtract>false</IncludeAllContentForSelfExtract>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- System.Management 内部用反射创建 WMI 的 COM 对象，裁剪会误删，整个保留 -->
+    <TrimmerRootAssembly Include="System.Management" />
+    <EmbeddedResource Include="Assets\*.svg" LogicalName="%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- 依赖已安装的 Windows App SDK 运行时时必须引用，否则会改为把整个运行时打包进来 -->
+    <PackageReference Include="Microsoft.WindowsAppSDK.Runtime" Version="2.6.5" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="2.6.5" />
+    <PackageReference Include="System.Drawing.Common" Version="11.0.0-rc.3.26522.148" />
+    <PackageReference Include="System.Management" Version="11.0.0-rc.3.26522.148" />
+  </ItemGroup>
+</Project>
