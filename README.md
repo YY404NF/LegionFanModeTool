@@ -20,7 +20,7 @@
 ## 构建
 
 ```bash
-dotnet publish -c Release -o publish
+dotnet publish LegionFanModeTool.csproj -c Release -o publish
 ```
 
 生成单个 `publish/LegionFanModeTool.exe`（约 14 MB）。

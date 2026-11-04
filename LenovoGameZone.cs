@@ -80,7 +80,8 @@ internal static class LenovoGameZone
         }
     }
 
-    internal static ManagementScope ConnectScope()
+    /// <summary>连接 root\WMI 命名空间，ModeWatcher 订阅事件时也用它。</summary>
+    public static ManagementScope ConnectScope()
     {
         var scope = new ManagementScope(Namespace, new ConnectionOptions
         {

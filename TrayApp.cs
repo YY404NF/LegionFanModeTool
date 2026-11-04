@@ -164,7 +164,6 @@ internal sealed class TrayApp : IDisposable
         UpdateToolTip();
     }
 
-
     private void UpdateMode(FanMode mode)
     {
         if (mode == _currentMode)
@@ -207,7 +206,7 @@ internal sealed class TrayApp : IDisposable
 
     // 不用 ToggleMenuFlyoutItem：它会给整个菜单多加一列勾选框。勾号直接作为图标，和模式图标共用一列
     private static void SetChecked(MenuFlyoutItem item, bool isChecked) =>
-        item.Icon = isChecked ? new FontIcon { Glyph = "" } : null; // Segoe Fluent Icons：CheckMark
+        item.Icon = isChecked ? new FontIcon { Glyph = "\uE73E" } : null; // Segoe Fluent Icons：CheckMark
 
     private void Exit()
     {
