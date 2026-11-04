@@ -5,7 +5,7 @@ using System.Management;
 namespace LegionFanModeTool;
 
 /// <summary>
-/// 订阅 BIOS 的散热模式变化事件，代替定时轮询。Fn+Q、联想电脑管家或本程序切换模式时都会触发。
+/// 订阅 BIOS 的散热模式变化事件。Fn+Q、联想电脑管家或本程序切换模式时都会触发。
 /// 不同机型发出的事件不同（R9000P 2021 只发 THERMAL_MODE_EVENT），所以两个都订阅。
 /// 事件在线程池线程上触发。
 /// </summary>
@@ -21,7 +21,7 @@ internal sealed class ModeWatcher : IDisposable
 
     public event Action? ModeChanged;
 
-    /// <summary>开始订阅。全部订阅失败时抛出异常，调用方可以退回轮询。</summary>
+    /// <summary>开始订阅。全部订阅失败时抛出异常。</summary>
     public void Start()
     {
         var scope = LenovoGameZone.ConnectScope();

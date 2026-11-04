@@ -16,8 +16,6 @@ namespace LegionFanModeTool;
 /// </summary>
 internal sealed class TrayApp : IDisposable
 {
-    /// <summary>订阅事件失败时退回的轮询间隔。</summary>
-    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(3);
     /// <summary>悬停时读取传感器的最短间隔。</summary>
     private static readonly TimeSpan SensorInterval = TimeSpan.FromSeconds(1);
     private static readonly FanMode[] MenuModes = [FanMode.Balanced, FanMode.Performance, FanMode.Quiet];
@@ -30,7 +28,6 @@ internal sealed class TrayApp : IDisposable
     private readonly Dictionary<(FanMode Mode, Color Color, double Scale), WriteableBitmap> _menuIcons = [];
     private readonly MenuFlyoutItem _autoStartItem = new() { Text = "开机自启" };
     private readonly Stopwatch _sinceSensorRead = new();
-    private DispatcherQueueTimer? _pollTimer;
     private FanMode _currentMode;
     private SensorReadings? _sensors;
     private bool _busy;
@@ -80,13 +77,10 @@ internal sealed class TrayApp : IDisposable
         {
             _modeWatcher.Start();
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // 机型不发事件或订阅失败时退回定时轮询
-            _pollTimer = _dispatcher.CreateTimer();
-            _pollTimer.Interval = PollInterval;
-            _pollTimer.Tick += (_, _) => _ = RefreshAsync(showErrors: false);
-            _pollTimer.Start();
+            // 订阅失败时，Fn+Q 等外部切换不会同步；本程序的切换仍会更新图标
+            CrashLog.Write("订阅散热模式事件失败", ex);
         }
     }
 
@@ -234,7 +228,6 @@ internal sealed class TrayApp : IDisposable
 
     public void Dispose()
     {
-        _pollTimer?.Stop();
         _modeWatcher.Dispose();
         _trayIcon.Dispose();
         _menuHost.Dispose();

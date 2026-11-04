@@ -9,7 +9,8 @@ namespace LegionFanModeTool;
 
 /// <summary>
 /// 菜单图标：按显示缩放算出的实际像素尺寸绘制成位图，以 1:1 像素显示。
-/// 不用 SvgImageSource，它在 16px 这样的小尺寸下抗锯齿效果很差。
+/// 不用 SvgImageSource：它在 16px 这样的小尺寸下抗锯齿效果很差，而且从内存流加载时，
+/// 流被 GC 回收后 XAML 再次解码会触发 E_POINTER 崩溃。
 /// </summary>
 internal static class MenuIcons
 {
