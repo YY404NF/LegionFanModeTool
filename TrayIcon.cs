@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.Runtime.InteropServices;
 using Windows.Graphics;
+using static LegionFanModeTool.Win32;
 
 namespace LegionFanModeTool;
 
@@ -15,8 +16,6 @@ internal sealed unsafe partial class TrayIcon : IDisposable
     private const uint CallbackMessage = 0x8000 + 1; // WM_APP + 1
     private const uint IconId = 1;
 
-    private static readonly Lazy<ushort> ClassAtom = new(RegisterWindowClass);
-
     private readonly GCHandle _self;
     private readonly nint _hwnd;
     private readonly uint _taskbarCreatedMessage;
@@ -27,9 +26,6 @@ internal sealed unsafe partial class TrayIcon : IDisposable
 
     /// <summary>请求显示菜单，参数为屏幕物理像素坐标。</summary>
     public event Action<PointInt32>? ContextMenuRequested;
-
-    /// <summary>鼠标在图标上移动（提示即将显示或正在显示），会频繁触发。</summary>
-    public event Action? Hovered;
 
     /// <summary>系统的亮色/暗色模式或强调色发生变化。</summary>
     public event Action? ThemeChanged;
@@ -60,10 +56,7 @@ internal sealed unsafe partial class TrayIcon : IDisposable
     public TrayIcon()
     {
         _self = GCHandle.Alloc(this);
-        fixed (char* name = WindowClass)
-            _hwnd = CreateWindowExW(0, (char*)ClassAtom.Value, name, 0, 0, 0, 0, 0, 0, 0, GetModuleHandleW(null), null);
-        if (_hwnd == 0)
-            throw new InvalidOperationException($"CreateWindowEx 失败：{Marshal.GetLastPInvokeError()}");
+        _hwnd = CreateWindow(WindowClass, wndProc: &WndProc);
         SetWindowLongPtrW(_hwnd, GwlpUserData, GCHandle.ToIntPtr(_self));
 
         // 资源管理器重启后会广播 TaskbarCreated，主题变化会广播 WM_SETTINGCHANGE。
@@ -149,9 +142,6 @@ internal sealed unsafe partial class TrayIcon : IDisposable
                 case WmContextMenu:
                     ContextMenuRequested?.Invoke(new PointInt32((short)wParam, (short)(wParam >> 16)));
                     break;
-                case WmMouseMove:
-                    Hovered?.Invoke();
-                    break;
             }
             return 0;
         }
@@ -172,22 +162,6 @@ internal sealed unsafe partial class TrayIcon : IDisposable
         return DefWindowProcW(_hwnd, msg, wParam, lParam);
     }
 
-    private static ushort RegisterWindowClass()
-    {
-        fixed (char* name = WindowClass)
-        {
-            var wc = new WNDCLASSEXW
-            {
-                cbSize = (uint)sizeof(WNDCLASSEXW),
-                lpfnWndProc = &WndProc,
-                hInstance = GetModuleHandleW(null),
-                lpszClassName = name,
-            };
-            var atom = RegisterClassExW(&wc);
-            return atom != 0 ? atom : throw new InvalidOperationException($"RegisterClassEx 失败：{Marshal.GetLastPInvokeError()}");
-        }
-    }
-
     [UnmanagedCallersOnly]
     private static nint WndProc(nint hwnd, uint msg, nint wParam, nint lParam) =>
         GetWindowLongPtrW(hwnd, GwlpUserData) is not 0 and var self
@@ -202,27 +176,9 @@ internal sealed unsafe partial class TrayIcon : IDisposable
     private const uint NotifyIconVersion4 = 4;
     private const uint NinSelect = 0x400, NinKeySelect = 0x401;
     private const uint WmContextMenu = 0x007B;
-    private const uint WmMouseMove = 0x0200;
     private const uint WmSettingChange = 0x001A;
     private const uint MsgFltAllow = 1;
     private const int GwlpUserData = -21;
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct WNDCLASSEXW
-    {
-        public uint cbSize;
-        public uint style;
-        public delegate* unmanaged<nint, uint, nint, nint, nint> lpfnWndProc;
-        public int cbClsExtra;
-        public int cbWndExtra;
-        public nint hInstance;
-        public nint hIcon;
-        public nint hCursor;
-        public nint hbrBackground;
-        public char* lpszMenuName;
-        public char* lpszClassName;
-        public nint hIconSm;
-    }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct NOTIFYICONDATAW
@@ -243,29 +199,6 @@ internal sealed unsafe partial class TrayIcon : IDisposable
         public Guid guidItem;
         public nint hBalloonIcon;
     }
-
-    [LibraryImport("kernel32.dll", StringMarshalling = StringMarshalling.Utf16)]
-    private static partial nint GetModuleHandleW(string? moduleName);
-
-    [LibraryImport("user32.dll", SetLastError = true)]
-    private static partial ushort RegisterClassExW(WNDCLASSEXW* wc);
-
-    [LibraryImport("user32.dll", SetLastError = true)]
-    private static partial nint CreateWindowExW(uint exStyle, char* className, char* windowName, uint style,
-        int x, int y, int width, int height, nint parent, nint menu, nint instance, void* param);
-
-    [LibraryImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool DestroyWindow(nint hwnd);
-
-    [LibraryImport("user32.dll")]
-    private static partial nint DefWindowProcW(nint hwnd, uint msg, nint wParam, nint lParam);
-
-    [LibraryImport("user32.dll")]
-    private static partial nint GetWindowLongPtrW(nint hwnd, int index);
-
-    [LibraryImport("user32.dll")]
-    private static partial nint SetWindowLongPtrW(nint hwnd, int index, nint value);
 
     [LibraryImport("user32.dll", StringMarshalling = StringMarshalling.Utf16)]
     private static partial uint RegisterWindowMessageW(string name);

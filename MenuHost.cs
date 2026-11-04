@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Windows.Graphics;
+using static LegionFanModeTool.Win32;
 
 namespace LegionFanModeTool;
 
@@ -80,12 +81,6 @@ internal sealed partial class MenuHost : IDisposable
     private const uint DwmwaBorderColor = 34;
     private const uint DwmwcpDoNotRound = 1;
     private const uint DwmwaColorNone = 0xFFFFFFFE;
-
-    [LibraryImport("user32.dll")]
-    private static partial nint GetWindowLongPtrW(nint hwnd, int index);
-
-    [LibraryImport("user32.dll")]
-    private static partial nint SetWindowLongPtrW(nint hwnd, int index, nint value);
 
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Drawing;
 using System.Threading.Tasks;
 using Microsoft.UI.Dispatching;
@@ -12,27 +11,26 @@ namespace LegionFanModeTool;
 
 /// <summary>
 /// 托盘程序：左键按 安静 → 均衡 → 野兽 循环切换，右键菜单可选全部模式、开机自启和退出。
-/// 模式变化通过订阅 BIOS 事件获得；风扇转速和温度只在鼠标悬停在图标上时读取。
+/// 模式变化通过订阅 BIOS 事件获得。
 /// </summary>
 internal sealed class TrayApp : IDisposable
 {
-    /// <summary>悬停时读取传感器的最短间隔。</summary>
-    private static readonly TimeSpan SensorInterval = TimeSpan.FromSeconds(1);
     private static readonly FanMode[] MenuModes = [FanMode.Balanced, FanMode.Performance, FanMode.Quiet];
 
     private readonly DispatcherQueue _dispatcher = DispatcherQueue.GetForCurrentThread();
     private readonly TrayIcon _trayIcon = new();
     private readonly MenuHost _menuHost;
+    private readonly ModeOsd _osd = new();
     private readonly ModeWatcher _modeWatcher = new();
+    private readonly GlobalHotkey _altQ = new(HotkeyModifiers.Alt, 'Q');
     private readonly Dictionary<FanMode, MenuFlyoutItem> _modeItems = [];
     private readonly Dictionary<(FanMode Mode, Color Color, double Scale), WriteableBitmap> _menuIcons = [];
     private readonly MenuFlyoutItem _autoStartItem = new() { Text = "开机自启" };
-    private readonly Stopwatch _sinceSensorRead = new();
+    private readonly MenuFlyoutItem _showOsdItem = new() { Text = "切换显示" };
+    private readonly MenuFlyoutItem _altQItem = new() { Text = "Alt+Q" };
     private FanMode _currentMode;
-    private SensorReadings? _sensors;
     private bool _busy;
     private bool _refreshPending;
-    private bool _sensorsBusy;
 
     public TrayApp()
     {
@@ -40,6 +38,8 @@ internal sealed class TrayApp : IDisposable
             _modeItems[mode] = CreateModeItem(mode);
 
         _autoStartItem.Click += (_, _) => ToggleAutoStart();
+        _showOsdItem.Click += (_, _) => SetChecked(_showOsdItem, Settings.ShowOsd = !Settings.ShowOsd);
+        _altQItem.Click += (_, _) => ToggleAltQ();
         var exitItem = new MenuFlyoutItem { Text = "退出" };
         exitItem.Click += (_, _) => Exit();
 
@@ -48,26 +48,32 @@ internal sealed class TrayApp : IDisposable
             menu.Items.Add(_modeItems[mode]);
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(_autoStartItem);
+        menu.Items.Add(_showOsdItem);
+        menu.Items.Add(_altQItem);
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(exitItem);
         menu.Opening += (_, _) =>
         {
             UpdateMenuIcons();
             SetChecked(_autoStartItem, AutoStart.IsEnabled());
+            SetChecked(_showOsdItem, Settings.ShowOsd);
+            SetChecked(_altQItem, _altQ.IsRegistered);
         };
         _menuHost = new MenuHost(menu);
 
         _trayIcon.Selected += () => _ = SwitchModeAsync(_currentMode.Next);
         _trayIcon.ContextMenuRequested += position => _ = _menuHost.ShowAsync(position);
-        _trayIcon.Hovered += () => _ = RefreshSensorsAsync(force: false);
         _trayIcon.ThemeChanged += UpdateTrayIcon;
         _trayIcon.ToolTip = "散热模式：读取中…";
         UpdateTrayIcon();
         _trayIcon.Show();
 
+        _altQ.Pressed += () => _ = SwitchModeAsync(_currentMode.Next);
+        if (Settings.AltQHotkey)
+            EnableAltQ();
+
         StartWatching();
         _ = RefreshAsync(showErrors: true);
-        _ = RefreshSensorsAsync(force: true);
     }
 
     private void StartWatching()
@@ -95,28 +101,34 @@ internal sealed class TrayApp : IDisposable
         return item;
     }
 
-    private Task SwitchModeAsync(FanMode mode) =>
-        RunAsync(() => LenovoGameZone.SetMode(mode), errorTitle: "切换失败");
+    /// <summary>切换模式，成功后像 Fn+Q 一样在屏幕上提示切换后的实际模式（可在菜单中关闭）。</summary>
+    private async Task SwitchModeAsync(FanMode mode)
+    {
+        if (await RunAsync(() => LenovoGameZone.SetMode(mode), errorTitle: "切换失败") is { } actual && Settings.ShowOsd)
+            _osd.Show(actual);
+    }
 
-    private Task RefreshAsync(bool showErrors) =>
+    private Task<FanMode?> RefreshAsync(bool showErrors) =>
         RunAsync(LenovoGameZone.GetMode, errorTitle: showErrors ? "读取失败" : null);
 
     /// <summary>
-    /// 在后台线程执行 WMI 操作并更新界面；同一时间只执行一个。
+    /// 在后台线程执行 WMI 操作并更新界面，返回读到的模式（忙或失败时为 null）；同一时间只执行一个。
     /// 执行期间收到的事件刷新会在结束后补做一次，避免漏掉 Fn+Q 等外部切换。
     /// </summary>
-    private async Task RunAsync(Func<FanMode> operation, string? errorTitle)
+    private async Task<FanMode?> RunAsync(Func<FanMode> operation, string? errorTitle)
     {
         if (_busy)
         {
             _refreshPending = true;
-            return;
+            return null;
         }
 
+        FanMode? result = null;
         _busy = true;
         try
         {
-            UpdateMode(await Task.Run(operation));
+            result = await Task.Run(operation);
+            UpdateMode(result.Value);
         }
         catch (Exception ex) when (errorTitle is not null)
         {
@@ -136,28 +148,7 @@ internal sealed class TrayApp : IDisposable
             _refreshPending = false;
             await RefreshAsync(showErrors: false);
         }
-    }
-
-    private async Task RefreshSensorsAsync(bool force)
-    {
-        if (_sensorsBusy || (!force && _sinceSensorRead.IsRunning && _sinceSensorRead.Elapsed < SensorInterval))
-            return;
-
-        _sensorsBusy = true;
-        try
-        {
-            _sensors = await Task.Run(LenovoGameZone.GetSensors);
-        }
-        catch
-        {
-            _sensors = null; // 不支持的机型只显示模式
-        }
-        finally
-        {
-            _sensorsBusy = false;
-            _sinceSensorRead.Restart();
-        }
-        UpdateToolTip();
+        return result;
     }
 
     private void UpdateMode(FanMode mode)
@@ -168,7 +159,7 @@ internal sealed class TrayApp : IDisposable
         _currentMode = mode;
         UpdateMenuIcons();
         UpdateTrayIcon();
-        UpdateToolTip();
+        _trayIcon.ToolTip = $"散热模式：{mode.DisplayName}";
     }
 
     /// <summary>托盘图标和原生图标一样单色，颜色跟随任务栏主题。</summary>
@@ -189,15 +180,21 @@ internal sealed class TrayApp : IDisposable
         }
     }
 
-    private void UpdateToolTip()
+    /// <summary>Alt+Q 与左键单击相同：按 安静 → 均衡 → 野兽 循环切换。</summary>
+    private void ToggleAltQ()
     {
-        var text = $"散热模式：{_currentMode.DisplayName}";
-        if (_sensors is { } s)
-        {
-            text += $"\n风扇：{s.Fan1Rpm} / {s.Fan2Rpm} RPM"
-                  + $"\nCPU {s.CpuTemp}°C　GPU {s.GpuTemp}°C";
-        }
-        _trayIcon.ToolTip = text;
+        Settings.AltQHotkey = !_altQ.IsRegistered;
+        if (Settings.AltQHotkey)
+            EnableAltQ();
+        else
+            _altQ.Unregister();
+        SetChecked(_altQItem, _altQ.IsRegistered);
+    }
+
+    private void EnableAltQ()
+    {
+        if (!_altQ.Register())
+            _trayIcon.ShowError("Alt+Q 不可用", "Alt+Q 已被其他程序注册为全局快捷键。");
     }
 
     private void ToggleAutoStart()
@@ -231,5 +228,7 @@ internal sealed class TrayApp : IDisposable
         _modeWatcher.Dispose();
         _trayIcon.Dispose();
         _menuHost.Dispose();
+        _osd.Dispose();
+        _altQ.Dispose();
     }
 }

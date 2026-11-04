@@ -43,16 +43,20 @@ internal static class FanModeExtensions
         };
 
         /// <summary>打开嵌入的图案 SVG（Assets 目录，还原自联想电脑管家）。未知模式使用均衡的图案。</summary>
-        public Stream OpenSvg()
+        public Stream OpenSvg() => OpenResource($"{mode.AssetName}.svg");
+
+        /// <summary>打开嵌入的屏幕提示图片（Assets/Osd 目录，取自联想 Fn 热键程序）。</summary>
+        public Stream OpenOsdImage() => OpenResource($"osd-{mode.AssetName}.png");
+
+        private string AssetName => mode switch
         {
-            var name = mode switch
-            {
-                FanMode.Quiet => "quiet",
-                FanMode.Performance => "performance",
-                _ => "balanced",
-            };
-            return Assembly.GetExecutingAssembly().GetManifestResourceStream($"{name}.svg")
-                ?? throw new InvalidOperationException($"缺少图标资源 {name}.svg");
-        }
+            FanMode.Quiet => "quiet",
+            FanMode.Performance => "performance",
+            _ => "balanced",
+        };
     }
+
+    private static Stream OpenResource(string name) =>
+        Assembly.GetExecutingAssembly().GetManifestResourceStream(name)
+            ?? throw new InvalidOperationException($"缺少资源 {name}");
 }

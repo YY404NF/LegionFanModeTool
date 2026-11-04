@@ -33,6 +33,7 @@
     <!-- System.Management 内部用反射创建 WMI 的 COM 对象，裁剪会误删，整个保留 -->
     <TrimmerRootAssembly Include="System.Management" />
     <EmbeddedResource Include="Assets\*.svg" LogicalName="%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Assets\Osd\*.png" LogicalName="osd-%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>
     <!-- 依赖已安装的 Windows App SDK 运行时时必须引用，否则会改为把整个运行时打包进来 -->
