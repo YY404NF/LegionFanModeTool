@@ -2,7 +2,7 @@ using Microsoft.Win32;
 
 namespace LegionFanModeTool;
 
-/// <summary>用户设置，保存在 HKCU\Software\LegionFanModeTool，没有保存过的开关视为开启。</summary>
+/// <summary>用户设置，保存在 HKCU\Software\LegionFanModeTool。</summary>
 internal static class Settings
 {
     private const string KeyPath = @"Software\LegionFanModeTool";
@@ -14,17 +14,17 @@ internal static class Settings
         set => SetFlag(nameof(ShowOsd), value);
     }
 
-    /// <summary>是否启用 Alt+Q 全局热键。</summary>
+    /// <summary>是否启用 Alt+Q 全局热键，默认关闭。</summary>
     public static bool AltQHotkey
     {
-        get => GetFlag(nameof(AltQHotkey));
+        get => GetFlag(nameof(AltQHotkey), defaultValue: false);
         set => SetFlag(nameof(AltQHotkey), value);
     }
 
-    private static bool GetFlag(string name)
+    private static bool GetFlag(string name, bool defaultValue = true)
     {
         using var key = Registry.CurrentUser.OpenSubKey(KeyPath);
-        return key?.GetValue(name) is not 0;
+        return key?.GetValue(name, defaultValue ? 1 : 0) is int value ? value != 0 : defaultValue;
     }
 
     private static void SetFlag(string name, bool value)

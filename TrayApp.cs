@@ -1,7 +1,4 @@
-using System;
-using System.Collections.Generic;
 using System.Drawing;
-using System.Threading.Tasks;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -40,7 +37,7 @@ internal sealed class TrayApp : IDisposable
         _autoStartItem.Click += (_, _) => ToggleAutoStart();
         _showOsdItem.Click += (_, _) => SetChecked(_showOsdItem, Settings.ShowOsd = !Settings.ShowOsd);
         _altQItem.Click += (_, _) => ToggleAltQ();
-        var exitItem = new MenuFlyoutItem { Text = "退出" };
+        var exitItem = new MenuFlyoutItem { Text = "退出", Icon = new FontIcon { Glyph = "\uE7E8" } }; // Segoe Fluent Icons：PowerButton
         exitItem.Click += (_, _) => Exit();
 
         var menu = new MenuFlyout();

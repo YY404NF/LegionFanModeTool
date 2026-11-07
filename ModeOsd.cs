@@ -1,5 +1,3 @@
-using System;
-using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
@@ -12,17 +10,15 @@ namespace LegionFanModeTool;
 /// <summary>
 /// 切换模式时的屏幕提示，复刻联想 Fn 热键程序（FnHotkeyUtility）按 Fn+Q 时的效果：
 /// 主显示器水平居中、中心位于屏幕高度 3/4 处，图片原样放大 2 倍（150% 缩放下实测）并按逐像素透明度显示，
-/// 停留约 3.3 秒后 0.5 秒淡出。窗口置顶、不抢焦点、鼠标穿透。再次显示时更换图片并重新计时。
+/// 显示 2 秒后直接消失。窗口置顶、不抢焦点、鼠标穿透。再次显示时更换图片并重新计时。
 /// </summary>
 internal sealed unsafe partial class ModeOsd : IDisposable
 {
     private const int ImageSize = 160;
-    private static readonly TimeSpan HoldTime = TimeSpan.FromMilliseconds(3300);
-    private static readonly TimeSpan FadeTime = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan HoldTime = TimeSpan.FromSeconds(2);
 
     private readonly nint _hwnd;
     private readonly DispatcherQueueTimer _timer;
-    private readonly Stopwatch _shown = new();
 
     public ModeOsd()
     {
@@ -30,8 +26,9 @@ internal sealed unsafe partial class ModeOsd : IDisposable
             WsExLayered | WsExTopmost | WsExToolWindow | WsExNoActivate | WsExTransparent);
 
         _timer = DispatcherQueue.GetForCurrentThread().CreateTimer();
-        _timer.Interval = TimeSpan.FromMilliseconds(16);
-        _timer.Tick += (_, _) => OnTick();
+        _timer.Interval = HoldTime;
+        _timer.IsRepeating = false;
+        _timer.Tick += (_, _) => ShowWindow(_hwnd, SwHide);
     }
 
     public void Show(FanMode mode)
@@ -53,7 +50,7 @@ internal sealed unsafe partial class ModeOsd : IDisposable
             Present(image, position, size);
 
         ShowWindow(_hwnd, SwShowNoActivate);
-        _shown.Restart();
+        _timer.Stop(); // 重新计时
         _timer.Start();
     }
 
@@ -61,23 +58,6 @@ internal sealed unsafe partial class ModeOsd : IDisposable
     {
         _timer.Stop();
         DestroyWindow(_hwnd);
-    }
-
-    private void OnTick()
-    {
-        var fade = (_shown.Elapsed - HoldTime) / FadeTime;
-        if (fade <= 0)
-            return;
-
-        if (fade >= 1)
-        {
-            _timer.Stop();
-            ShowWindow(_hwnd, SwHide);
-            return;
-        }
-
-        var blend = Blend((byte)(255 * (1 - fade)));
-        UpdateLayeredWindow(_hwnd, 0, null, null, 0, null, 0, &blend, UlwAlpha);
     }
 
     /// <summary>把图片缩放到 <paramref name="size"/> 并作为分层窗口的内容（预乘 alpha 的 32 位 DIB）。</summary>
@@ -116,7 +96,7 @@ internal sealed unsafe partial class ModeOsd : IDisposable
 
             var sizeStruct = new SIZE(size, size);
             var origin = default(POINT);
-            var blend = Blend(255);
+            var blend = new BLENDFUNCTION { BlendOp = AcSrcOver, SourceConstantAlpha = 255, AlphaFormat = AcSrcAlpha };
             UpdateLayeredWindow(_hwnd, 0, &position, &sizeStruct, dc, &origin, 0, &blend, UlwAlpha);
         }
         finally
@@ -126,13 +106,6 @@ internal sealed unsafe partial class ModeOsd : IDisposable
             DeleteDC(dc);
         }
     }
-
-    private static BLENDFUNCTION Blend(byte alpha) => new()
-    {
-        BlendOp = AcSrcOver,
-        SourceConstantAlpha = alpha,
-        AlphaFormat = AcSrcAlpha,
-    };
 
     #region Win32
 

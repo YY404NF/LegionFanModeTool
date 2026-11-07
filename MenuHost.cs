@@ -1,11 +1,10 @@
-using System;
 using System.Runtime.InteropServices;
-using System.Threading.Tasks;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Media;
 using Windows.Graphics;
 using static LegionFanModeTool.Win32;
 
@@ -21,11 +20,17 @@ internal sealed partial class MenuHost : IDisposable
     private readonly Grid _root = new();
     private readonly MenuFlyout _menu;
     private readonly nint _hwnd;
+    private bool _disposing;
 
     public MenuHost(MenuFlyout menu)
     {
         _menu = menu;
         _menu.ShouldConstrainToRootBounds = false;
+        // 默认字体 Segoe UI 没有中文字形，中文由后备字体绘制却沿用 Segoe 的基线和行高，墨迹偏下、显得图标偏高；
+        // 直接用为中文设计度量的 Microsoft YaHei UI（也含拉丁字母），文字与图标按视觉中心对齐
+        var font = new FontFamily("Microsoft YaHei UI");
+        foreach (var item in menu.Items.OfType<MenuFlyoutItem>())
+            item.FontFamily = font;
 
         _window = new Window { Content = _root };
         _menu.Closed += (_, _) => _window.AppWindow.Hide();
@@ -37,6 +42,14 @@ internal sealed partial class MenuHost : IDisposable
         };
 
         var appWindow = _window.AppWindow;
+        // 菜单打开时按 Alt+F4 会关闭宿主窗口，之后菜单再也打不开；只在程序退出时真正关闭
+        appWindow.Closing += (sender, e) =>
+        {
+            if (_disposing)
+                return;
+            e.Cancel = true;
+            sender.Hide();
+        };
         appWindow.SetPresenter(OverlappedPresenter.CreateForContextMenu());
         appWindow.IsShownInSwitchers = false;
 
@@ -73,7 +86,11 @@ internal sealed partial class MenuHost : IDisposable
         });
     }
 
-    public void Dispose() => _window.Close();
+    public void Dispose()
+    {
+        _disposing = true;
+        _window.Close();
+    }
 
     private const int GwlExStyle = -20;
     private const nint WsExToolWindow = 0x80;
