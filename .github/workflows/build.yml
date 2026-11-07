@@ -14,9 +14,9 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5.1.0
 
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@v5.4.0
         with:
           dotnet-version: 11.0.x
           dotnet-quality: preview
@@ -27,14 +27,14 @@ jobs:
           $version = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME.TrimStart('v') } else { '0.0.0-ci.' + $env:GITHUB_RUN_NUMBER }
           dotnet publish LegionFanModeTool.csproj -c Release -o publish -p:Version=$version
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v5.0.0
         with:
           name: LegionFanModeTool
           path: publish/LegionFanModeTool.exe
 
       - name: 创建 Release
         if: github.ref_type == 'tag'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v2.6.2
         with:
           files: publish/LegionFanModeTool.exe
           generate_release_notes: true
