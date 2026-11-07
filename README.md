@@ -4,6 +4,10 @@
 
 ![托盘图标与当前散热模式提示](docs/images/tool.jpg)
 
+## 下载
+
+在 [Releases](https://github.com/YY404NF/LegionFanModeTool/releases) 下载 `LegionFanModeTool.exe`，单个文件直接运行。
+
 ## 使用
 
 - **左键单击托盘图标**：按 `安静` → `均衡` → `野兽` 循环切换（野兽模式仅在插入电源时生效）
@@ -13,6 +17,7 @@
 
 ## 运行要求
 
+- 已安装 [Windows App SDK 2.6 运行时](https://learn.microsoft.com/windows/apps/windows-app-sdk/downloads)
 - 管理员权限（启动时会弹出 UAC）
 - 支持 `LENOVO_GAMEZONE_DATA` WMI 接口的联想拯救者机型
 - 已经测试通过的机型：
@@ -23,6 +28,8 @@
 ```bash
 dotnet publish LegionFanModeTool.csproj -c Release -o publish
 ```
+
+推送到 `main` 或提交 PR 时 GitHub Actions 会自动构建；推送 `v*` 标签（如 `v1.0.0`）时自动构建并发布 Release。
 
 ## 技术栈
 
