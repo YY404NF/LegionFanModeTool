@@ -27,7 +27,7 @@ jobs:
           $version = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME.TrimStart('v') } else { '0.0.0-ci.' + $env:GITHUB_RUN_NUMBER }
           dotnet publish LegionFanModeTool.csproj -c Release -o publish -p:Version=$version
 
-      - uses: actions/upload-artifact@v5.0.0
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: LegionFanModeTool
           path: publish/LegionFanModeTool.exe
