@@ -29,8 +29,6 @@
 dotnet publish LegionFanModeTool.csproj -c Release -o publish
 ```
 
-推送到 `main` 或提交 PR 时 GitHub Actions 会自动构建；推送 `v*` 标签（如 `v1.0.0`）时自动构建并发布 Release。
-
 ## 技术栈
 
 - .NET 11
