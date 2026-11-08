@@ -6,7 +6,7 @@
 
 ## 下载
 
-在 [Releases](https://github.com/YY404NF/LegionFanModeTool/releases) 下载 `LegionFanModeTool.exe`，单个文件直接运行。
+[Releases](https://github.com/YY404NF/LegionFanModeTool/releases)
 
 ## 使用
 
