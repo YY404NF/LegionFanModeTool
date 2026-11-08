@@ -16,10 +16,10 @@ internal static class MenuIcons
     /// <summary>菜单图标位的逻辑尺寸（DIP）。</summary>
     private const double Size = 16;
 
-    public static WriteableBitmap Create(FanMode mode, Color color, double scale)
+    public static WriteableBitmap Create(SvgIcon glyph, Color color, double scale)
     {
         var pixels = (int)Math.Round(Size * scale);
-        using var bitmap = IconRenderer.Render(mode, pixels, color);
+        using var bitmap = IconRenderer.Render(glyph, pixels, color);
 
         // WriteableBitmap 需要预乘 alpha 的 BGRA
         var data = bitmap.LockBits(new Rectangle(0, 0, pixels, pixels), ImageLockMode.ReadOnly, PixelFormat.Format32bppPArgb);

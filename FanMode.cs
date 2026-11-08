@@ -1,5 +1,4 @@
 using System.Drawing;
-using System.Reflection;
 
 namespace LegionFanModeTool;
 
@@ -41,10 +40,10 @@ internal static class FanModeExtensions
         };
 
         /// <summary>打开嵌入的图案 SVG（Assets 目录，还原自联想电脑管家）。未知模式使用均衡的图案。</summary>
-        public Stream OpenSvg() => OpenResource($"{mode.AssetName}.svg");
+        public Stream OpenSvg() => EmbeddedAssets.Open($"{mode.AssetName}.svg");
 
         /// <summary>打开嵌入的屏幕提示图片（Assets/Osd 目录，取自联想 Fn 热键程序）。</summary>
-        public Stream OpenOsdImage() => OpenResource($"osd-{mode.AssetName}.png");
+        public Stream OpenOsdImage() => EmbeddedAssets.Open($"osd-{mode.AssetName}.png");
 
         private string AssetName => mode switch
         {
@@ -53,8 +52,4 @@ internal static class FanModeExtensions
             _ => "balanced",
         };
     }
-
-    private static Stream OpenResource(string name) =>
-        Assembly.GetExecutingAssembly().GetManifestResourceStream(name)
-            ?? throw new InvalidOperationException($"缺少资源 {name}");
 }

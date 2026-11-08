@@ -6,29 +6,32 @@ using System.Runtime.InteropServices;
 namespace LegionFanModeTool;
 
 /// <summary>
-/// 按目标像素尺寸绘制单色模式图标（Assets 中 16×16 网格的 SVG）。
+/// 按目标像素尺寸绘制单色图标（Assets 中的 SVG）。
 /// 托盘和菜单共用，保证两处抗锯齿效果一致。
 /// </summary>
 internal static partial class IconRenderer
 {
     private static readonly Dictionary<FanMode, SvgIcon> Glyphs = [];
 
+    /// <summary>Legion 标志（"LEGION" 中的 O），显示在菜单顶部的型号旁。</summary>
+    public static SvgIcon Legion { get; } = Load("legion.svg");
+
     /// <summary>绘制 <paramref name="size"/>×<paramref name="size"/> 像素的图标，调用方负责释放。</summary>
-    public static Bitmap Render(FanMode mode, int size, Color color)
+    public static Bitmap Render(SvgIcon glyph, int size, Color color)
     {
         var bitmap = new Bitmap(size, size, PixelFormat.Format32bppArgb);
         using var g = Graphics.FromImage(bitmap);
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.PixelOffsetMode = PixelOffsetMode.HighQuality;
         g.CompositingQuality = CompositingQuality.HighQuality;
-        GetGlyph(mode).Draw(g, new RectangleF(0, 0, size, size), color);
+        glyph.Draw(g, new RectangleF(0, 0, size, size), color);
         return bitmap;
     }
 
     /// <summary>按当前 DPI 下的托盘图标尺寸创建图标，调用方负责释放。</summary>
     public static Icon CreateTrayIcon(FanMode mode, Color color)
     {
-        using var bitmap = Render(mode, GetSystemMetrics(SmCxSmIcon), color);
+        using var bitmap = Render(Glyph(mode), GetSystemMetrics(SmCxSmIcon), color);
         var handle = bitmap.GetHicon();
         try
         {
@@ -40,7 +43,7 @@ internal static partial class IconRenderer
         }
     }
 
-    private static SvgIcon GetGlyph(FanMode mode)
+    public static SvgIcon Glyph(FanMode mode)
     {
         if (!Glyphs.TryGetValue(mode, out var glyph))
         {
@@ -48,6 +51,12 @@ internal static partial class IconRenderer
             Glyphs[mode] = glyph = new SvgIcon(stream);
         }
         return glyph;
+    }
+
+    private static SvgIcon Load(string name)
+    {
+        using var stream = EmbeddedAssets.Open(name);
+        return new SvgIcon(stream);
     }
 
     private const int SmCxSmIcon = 49;

@@ -30,7 +30,14 @@ internal sealed partial class MenuHost : IDisposable
         // 直接用为中文设计度量的 Microsoft YaHei UI（也含拉丁字母），文字与图标按视觉中心对齐
         var font = new FontFamily("Microsoft YaHei UI");
         foreach (var item in menu.Items.OfType<MenuFlyoutItem>())
+        {
             item.FontFamily = font;
+            // WinUI 只在用鼠标打开菜单时用紧凑内边距（NarrowPadding），否则用适合触控的宽内边距。
+            // 菜单由托盘回调用代码打开，WinUI 只能按窗口最近一次的输入判断，刚启动或用过键盘时会变宽，所以固定为紧凑。
+            // WinUI 的紧凑内边距是上 4 下 7，那是给 Segoe UI 的上下留白做的补偿；换成微软雅黑后内容会偏上，
+            // 所以总高度不变（11），上下改为对称
+            item.Padding = new Thickness(11, 5.5, 11, 5.5);
+        }
 
         _window = new Window { Content = _root };
         _menu.Closed += (_, _) => _window.AppWindow.Hide();

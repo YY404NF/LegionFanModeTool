@@ -7,12 +7,13 @@ namespace LegionFanModeTool;
 
 /// <summary>
 /// 极简 SVG 渲染器，只支持图标用到的子集：填充的 path（全部路径命令）、fill-rule、
-/// translate 和由 circle 构成的 clipPath。颜色统一用绘制时传入的颜色。
+/// translate 和由 circle 构成的 clipPath。
+/// path 写了 fill="#RRGGBB" 时用固定颜色（如品牌色），否则用绘制时传入的颜色。
 /// 用 GDI+ 按目标像素尺寸直接绘制矢量。
 /// </summary>
 internal sealed class SvgIcon
 {
-    private readonly record struct Shape(GraphicsPath Path, GraphicsPath? Clip);
+    private readonly record struct Shape(GraphicsPath Path, GraphicsPath? Clip, Color? Fill);
 
     private readonly List<Shape> _shapes = [];
     private readonly RectangleF _viewBox;
@@ -60,7 +61,8 @@ internal sealed class SvgIcon
                     clipPath?.Transform(matrix);
                 }
 
-                _shapes.Add(new Shape(path, clipPath));
+                Color? fill = (string?)element.Attribute("fill") is ['#', ..] hex ? ColorTranslator.FromHtml(hex) : null;
+                _shapes.Add(new Shape(path, clipPath, fill));
             }
         }
         finally
@@ -86,7 +88,8 @@ internal sealed class SvgIcon
                 var clipState = g.Save();
                 if (shape.Clip is not null)
                     g.SetClip(shape.Clip, CombineMode.Intersect);
-                g.FillPath(brush, shape.Path);
+                using var fillBrush = shape.Fill is { } fill ? new SolidBrush(fill) : null;
+                g.FillPath(fillBrush ?? brush, shape.Path);
                 g.Restore(clipState);
             }
         }

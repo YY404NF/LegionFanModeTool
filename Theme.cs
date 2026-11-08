@@ -28,11 +28,13 @@ internal static class Theme
     public static bool IsAppLight => Settings.GetColorValue(UIColorType.Foreground) is { R: 0, G: 0, B: 0 };
 
     /// <summary>主要文字颜色，和原生图标、菜单文字一致（WinUI 资源 TextFillColorPrimary）。</summary>
-    public static Color Foreground(bool light)
+    public static Color Foreground(bool light) => ThemeColor("TextFillColorPrimary", light);
+
+    /// <summary>取 WinUI 指定主题下的资源（颜色、画刷等）。</summary>
+    public static object Resource(string key, bool light)
     {
         var resources = Application.Current.Resources.MergedDictionaries.OfType<XamlControlsResources>().Single();
-        var themeDictionary = (ResourceDictionary)resources.ThemeDictionaries[light ? "Light" : "Default"];
-        return ToDrawing((Windows.UI.Color)themeDictionary["TextFillColorPrimary"]);
+        return ((ResourceDictionary)resources.ThemeDictionaries[light ? "Light" : "Default"])[key];
     }
 
     /// <summary>
@@ -42,6 +44,8 @@ internal static class Theme
     public static Color ActiveColor(FanMode mode, bool light) => mode.BrandColor ?? (light
         ? ToDrawing(Settings.GetColorValue(UIColorType.AccentDark2))
         : Foreground(light: false));
+
+    private static Color ThemeColor(string key, bool light) => ToDrawing((Windows.UI.Color)Resource(key, light));
 
     private static Color ToDrawing(Windows.UI.Color c) => Color.FromArgb(c.A, c.R, c.G, c.B);
 }

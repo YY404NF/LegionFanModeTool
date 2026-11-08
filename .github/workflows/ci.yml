@@ -14,9 +14,9 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v5.1.0
+      - uses: actions/checkout@v7.0.1
 
-      - uses: actions/setup-dotnet@v5.4.0
+      - uses: actions/setup-dotnet@v6.1.0
         with:
           dotnet-version: 11.0.x
           dotnet-quality: preview
@@ -45,7 +45,7 @@ jobs:
 
       - name: 创建 Release
         if: github.ref_type == 'tag'
-        uses: softprops/action-gh-release@v2.6.2
+        uses: softprops/action-gh-release@v3.0.4
         with:
           files: dist/*.exe
           generate_release_notes: true

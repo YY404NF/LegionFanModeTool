@@ -21,7 +21,8 @@ internal sealed class TrayApp : IDisposable
     private readonly ModeWatcher _modeWatcher = new();
     private readonly GlobalHotkey _altQ = new(HotkeyModifiers.Alt, 'Q');
     private readonly Dictionary<FanMode, MenuFlyoutItem> _modeItems = [];
-    private readonly Dictionary<(FanMode Mode, Color Color, double Scale), WriteableBitmap> _menuIcons = [];
+    private readonly Dictionary<(SvgIcon Glyph, Color Color, double Scale), WriteableBitmap> _menuIcons = [];
+    private MenuFlyoutItem? _modelItem;
     private readonly MenuFlyoutItem _autoStartItem = new() { Text = "开机自启" };
     private readonly MenuFlyoutItem _showOsdItem = new() { Text = "切换显示" };
     private readonly MenuFlyoutItem _altQItem = new() { Text = "Alt+Q" };
@@ -41,6 +42,13 @@ internal sealed class TrayApp : IDisposable
         exitItem.Click += (_, _) => Exit();
 
         var menu = new MenuFlyout();
+        if (DeviceModel.DisplayName is { } model)
+        {
+            // 顶部型号行：只做展示（禁用、无悬停效果），没有映射的未知型号不显示
+            _modelItem = DeviceHeader.Create(model);
+            menu.Items.Add(_modelItem);
+            menu.Items.Add(new MenuFlyoutSeparator());
+        }
         foreach (var mode in MenuModes)
             menu.Items.Add(_modeItems[mode]);
         menu.Items.Add(new MenuFlyoutSeparator());
@@ -163,7 +171,7 @@ internal sealed class TrayApp : IDisposable
     private void UpdateTrayIcon() =>
         _trayIcon.Icon = IconRenderer.CreateTrayIcon(_currentMode, Theme.Foreground(Theme.IsTaskbarLight));
 
-    /// <summary>菜单图标跟随应用主题：未选中用文字颜色，当前模式用强调色。</summary>
+    /// <summary>菜单图标跟随应用主题：未选中和型号旁的标志用文字颜色，当前模式用强调色。</summary>
     private void UpdateMenuIcons()
     {
         var light = Theme.IsAppLight;
@@ -171,10 +179,17 @@ internal sealed class TrayApp : IDisposable
         foreach (var (mode, item) in _modeItems)
         {
             var color = mode == _currentMode ? Theme.ActiveColor(mode, light) : Theme.Foreground(light);
-            if (!_menuIcons.TryGetValue((mode, color, scale), out var source))
-                _menuIcons[(mode, color, scale)] = source = MenuIcons.Create(mode, color, scale);
-            ((ImageIcon)item.Icon).Source = source;
+            SetIcon(item, IconRenderer.Glyph(mode), color, scale);
         }
+        if (_modelItem is not null)
+            SetIcon(_modelItem, IconRenderer.Legion, Theme.Foreground(light), scale);
+    }
+
+    private void SetIcon(MenuFlyoutItem item, SvgIcon glyph, Color color, double scale)
+    {
+        if (!_menuIcons.TryGetValue((glyph, color, scale), out var source))
+            _menuIcons[(glyph, color, scale)] = source = MenuIcons.Create(glyph, color, scale);
+        ((ImageIcon)item.Icon).Source = source;
     }
 
     /// <summary>Alt+Q 与左键单击相同：按 安静 → 均衡 → 野兽 循环切换。</summary>
