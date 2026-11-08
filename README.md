@@ -17,7 +17,6 @@
 
 ## 运行要求
 
-- 已安装 [Windows App SDK 2.6 运行时](https://learn.microsoft.com/windows/apps/windows-app-sdk/downloads)
 - 管理员权限（启动时会弹出 UAC）
 - 支持 `LENOVO_GAMEZONE_DATA` WMI 接口的联想拯救者机型
 - 已经测试通过的机型：
