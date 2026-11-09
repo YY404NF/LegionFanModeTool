@@ -7,7 +7,8 @@ using System.Text.Json;
 namespace LegionFanModeTool;
 
 /// <summary>
-/// 自动更新：启动 1 分钟后检查一次，之后每 6 小时检查一次 GitHub 上最新的正式 Release。
+/// 自动更新：启动 1 分钟后检查一次，之后每 6 小时检查一次 GitHub 上最新的正式 Release；
+/// 右键托盘图标时也会检查一次（<see cref="CheckNow"/>，两次检查至少间隔 1 分钟）。
 /// 有更高版本时下载与本程序同类型的附件（普通版 / 带运行时版）到 "程序路径.new"，按 Release 提供的 SHA-256 校验。
 /// 连不上 GitHub、超时或任何一步出错都直接放弃，下次再试，不打扰用户。
 /// 版本号带预发布后缀的测试版（如 1.0.2-dev）不自动更新。
@@ -31,8 +32,13 @@ internal sealed class Updater : IDisposable
     private static readonly TimeSpan CheckInterval = TimeSpan.FromHours(6);
     private static readonly TimeSpan QueryTimeout = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan DownloadTimeout = TimeSpan.FromMinutes(3);
+    private static readonly TimeSpan MinCheckInterval = TimeSpan.FromMinutes(1);
 
     private readonly CancellationTokenSource _cts = new();
+    private readonly SemaphoreSlim _checking = new(1, 1);
+    private bool _enabled;
+    private bool _downloaded;
+    private DateTime _lastCheck = DateTime.MinValue;
 
     /// <summary>".new" 进程的参数：旧进程 PID 和要替换的程序路径。</summary>
     private const string ReplaceArgument = "--replace";
@@ -60,7 +66,38 @@ internal sealed class Updater : IDisposable
             TestLog.Write($"自动更新：{AppInfo.Version} 是测试版，不检查更新");
             return;
         }
+        _enabled = true;
         _ = RunAsync(_cts.Token);
+    }
+
+    /// <summary>立即检查一次（右键托盘图标时调用）；测试版、未启用自动更新或距上次检查不到 1 分钟时不检查。</summary>
+    public void CheckNow()
+    {
+        if (_enabled)
+            _ = CheckAsync(_cts.Token);
+    }
+
+    /// <summary>检查并下载；同一时间只进行一次，已下载新版本后不再检查。</summary>
+    private async Task CheckAsync(CancellationToken cancellation)
+    {
+        if (!await _checking.WaitAsync(0, cancellation))
+            return;
+        try
+        {
+            if (_downloaded || !Settings.AutoUpdate || DateTime.UtcNow - _lastCheck < MinCheckInterval)
+                return;
+
+            _lastCheck = DateTime.UtcNow;
+            if (await TryDownloadAsync(cancellation))
+            {
+                _downloaded = true;
+                Downloaded?.Invoke();
+            }
+        }
+        finally
+        {
+            _checking.Release();
+        }
     }
 
     /// <summary>
@@ -144,13 +181,9 @@ internal sealed class Updater : IDisposable
             using var timer = new PeriodicTimer(CheckInterval);
             do
             {
-                if (Settings.AutoUpdate && await TryDownloadAsync(cancellation))
-                {
-                    Downloaded?.Invoke();
-                    return;
-                }
+                await CheckAsync(cancellation);
             }
-            while (await timer.WaitForNextTickAsync(cancellation));
+            while (!_downloaded && await timer.WaitForNextTickAsync(cancellation));
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
@@ -242,28 +275,19 @@ internal sealed class Updater : IDisposable
         response.EnsureSuccessStatusCode();
         await using var source = await response.Content.ReadAsStreamAsync(cancellation);
 
-        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        await using (var file = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true))
-        {
-            var buffer = new byte[81920];
-            int read;
-            while ((read = await source.ReadAsync(buffer, cancellation)) > 0)
-            {
-                hash.AppendData(buffer, 0, read);
-                await file.WriteAsync(buffer.AsMemory(0, read), cancellation);
-            }
-        }
+        await using (var file = File.Create(path))
+            await source.CopyToAsync(file, cancellation);
 
-        if (new FileInfo(path).Length != update.Size || !hash.GetHashAndReset().AsSpan().SequenceEqual(update.Sha256))
+        await using var downloaded = File.OpenRead(path);
+        if (downloaded.Length != update.Size || !(await SHA256.HashDataAsync(downloaded, cancellation)).AsSpan().SequenceEqual(update.Sha256))
             throw new InvalidDataException("下载的文件大小或 SHA-256 与 Release 不一致");
     }
 
-    /// <summary>启动替换后的新程序，并让它等本进程退出后再运行（单实例锁）。</summary>
     /// <summary>启动已下载的 .new 交接进程，由它在本进程退出后完成替换。</summary>
     public static void LaunchReplacement() =>
         Launch(NewPath, ReplaceArgument, Environment.ProcessId.ToString(CultureInfo.InvariantCulture), ExePath);
 
-    private static void Launch(string path, params string[] arguments)
+    private static void Launch(string path, params ReadOnlySpan<string> arguments)
     {
         var startInfo = new ProcessStartInfo(path) { UseShellExecute = false }; // 继承本进程的管理员权限，不再弹出 UAC
         foreach (var argument in arguments)
@@ -275,5 +299,6 @@ internal sealed class Updater : IDisposable
     {
         _cts.Cancel();
         _cts.Dispose();
+        // _checking 没有用到等待句柄，不需要释放；退出时进行中的检查结束后还会调用它的 Release
     }
 }

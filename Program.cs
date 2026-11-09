@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Dispatching;
@@ -15,7 +14,7 @@ internal static class Program
         TestLog.Write($"""
             ==== 程序启动 ====
             EXE：{Environment.ProcessPath}
-            版本：{Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion}
+            版本：{AppInfo.InformationalVersion}
             系统：{RuntimeInformation.OSDescription}（{Environment.OSVersion.Version}）
             系统架构：{RuntimeInformation.OSArchitecture}，进程架构：{RuntimeInformation.ProcessArchitecture}，.NET：{Environment.Version}
             解压/应用目录：{AppContext.BaseDirectory}

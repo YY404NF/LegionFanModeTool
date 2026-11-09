@@ -5,10 +5,12 @@ namespace LegionFanModeTool;
 /// <summary>程序版本与发布类型。</summary>
 internal static class AppInfo
 {
-    /// <summary>完整版本号（构建时的 -p:Version，含 dev 等预发布后缀，不含提交哈希），如 "1.0.2"、"1.0.2-dev"。</summary>
-    public static string Version { get; } =
-        (Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.0.0")
-        .Split('+')[0];
+    /// <summary>构建信息版本，含提交哈希，如 "1.0.3+28e5703…"，诊断日志用。</summary>
+    public static string InformationalVersion { get; } =
+        Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.0.0";
+
+    /// <summary>版本号（构建时的 -p:Version，含 dev 等预发布后缀，不含提交哈希），如 "1.0.3"、"1.0.3-dev"。</summary>
+    public static string Version { get; } = InformationalVersion.Split('+')[0];
 
 #if WITH_RUNTIME
     /// <summary>是否为自带 Windows App SDK 运行时的版本。</summary>

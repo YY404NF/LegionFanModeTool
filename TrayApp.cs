@@ -26,6 +26,8 @@ internal sealed class TrayApp : IDisposable
     private readonly ModeWatcher _modeWatcher = new();
     private readonly GlobalHotkey _altQ = new(HotkeyModifiers.Alt, 'Q');
     private readonly Updater _updater = new();
+    private readonly MenuFlyout _menu;
+    private bool _restartPending;
     private readonly Dictionary<FanMode, MenuFlyoutItem> _modeItems = [];
     private readonly Dictionary<(SvgIcon Glyph, Color Color, double Scale), WriteableBitmap> _menuIcons = [];
     private MenuFlyoutItem? _modelItem;
@@ -58,7 +60,7 @@ internal sealed class TrayApp : IDisposable
         VersionLabel.Attach(exitItem, AppInfo.DisplayVersion, _versionBrush);
         exitItem.Click += (_, _) => Exit();
 
-        var menu = new MenuFlyout();
+        var menu = _menu = new MenuFlyout();
         if (DeviceModel.DisplayName is { } model)
         {
             // 顶部型号行：只做展示（禁用、无悬停效果），没有映射的未知型号不显示
@@ -87,12 +89,22 @@ internal sealed class TrayApp : IDisposable
         _menuHost = new MenuHost(menu);
 
         _trayIcon.Selected += CycleMode;
-        _trayIcon.ContextMenuRequested += position => _ = _menuHost.ShowAsync(position);
+        _trayIcon.ContextMenuRequested += position =>
+        {
+            _updater.CheckNow(); // 右键时检查一次更新；左键和 Alt+Q 不检查
+            _ = _menuHost.ShowAsync(position);
+        };
+        // 新版本在菜单打开时下载好的，等菜单关闭后再重启，避免菜单突然消失
+        menu.Closed += (_, _) =>
+        {
+            // 不在菜单关闭的回调里销毁菜单窗口，排到回调之后执行
+            if (_restartPending)
+                _dispatcher.TryEnqueue(RestartForUpdate);
+        };
         _trayIcon.ThemeChanged += UpdateTrayIcon;
         _trayIcon.ToolTip = "散热模式：读取中…";
         UpdateTrayIcon();
         _trayIcon.Show();
-        TrayPlacement.PromoteOnce();
 
         _altQ.Pressed += CycleMode;
         if (Settings.AltQHotkey)
@@ -416,6 +428,13 @@ internal sealed class TrayApp : IDisposable
     /// <summary>新版本已下载：启动交接进程（它会等本进程退出后完成替换并启动新版本），然后退出。</summary>
     private void RestartForUpdate()
     {
+        if (_menu.IsOpen)
+        {
+            _restartPending = true;
+            return;
+        }
+        _restartPending = false;
+
         try
         {
             TestLog.Write("自动更新：启动交接进程");
@@ -424,7 +443,7 @@ internal sealed class TrayApp : IDisposable
         catch (Exception ex)
         {
             // 在 UI 线程回调里，任何异常漏出去都会让 WinUI 直接终止进程；
-            // 启动失败时继续运行当前版本，下次检查再试
+            // 启动失败时继续运行当前版本；本次运行不再检查，下次启动再试
             CrashLog.Write("自动更新：启动交接进程失败", ex);
             return;
         }

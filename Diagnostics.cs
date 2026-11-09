@@ -2,7 +2,6 @@ using System.Diagnostics;
 #if DIAGNOSTICS
 using System.Globalization;
 using System.Management;
-using System.Reflection;
 using System.Text;
 using Microsoft.Win32;
 #endif
@@ -63,7 +62,7 @@ internal static class Diagnostics
         var sb = new StringBuilder();
         sb.AppendLine("==== LegionFanModeTool 诊断信息 ====");
         sb.AppendLine(CultureInfo.InvariantCulture, $"时间：{DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-        sb.AppendLine(CultureInfo.InvariantCulture, $"版本：{Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion}");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"版本：{AppInfo.InformationalVersion}");
 
         sb.AppendLine().AppendLine("[本次操作]");
         sb.AppendLine(CultureInfo.InvariantCulture, $"操作：{operation}");

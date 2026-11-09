@@ -22,13 +22,6 @@ internal static class Settings
         set => SetFlag(nameof(AutoUpdate), value);
     }
 
-    /// <summary>是否已在首次启动时把托盘图标设为显示在任务栏上（只做一次，之后由用户自己决定）。</summary>
-    public static bool TrayIconPromoted
-    {
-        get => GetFlag(nameof(TrayIconPromoted), defaultValue: false);
-        set => SetFlag(nameof(TrayIconPromoted), value);
-    }
-
     /// <summary>是否启用 Alt+Q 全局热键，默认关闭。</summary>
     public static bool AltQHotkey
     {
