@@ -4,7 +4,7 @@ using System.Management;
 namespace LegionFanModeTool;
 
 /// <summary>
-/// 通过 BIOS 提供的 WMI 接口 LENOVO_GAMEZONE_DATA（root\WMI）读写散热模式，需要管理员权限。
+/// 通过 BIOS 提供的 WMI 接口（root\WMI）读写散热模式和风扇全速开关，需要管理员权限。
 /// </summary>
 internal static class LenovoGameZone
 {
@@ -63,6 +63,37 @@ internal static class LenovoGameZone
         });
     }
 
+    /// <summary>
+    /// 读取"风扇全速"开关（LENOVO_FAN_METHOD）；接口不存在或读取失败时为 null。
+    /// BIOS 不把它保存在自定义档位里：离开自定义时自动关闭，切回自定义也不会恢复，
+    /// Legion Zone 每次应用自定义模式时会重新写入。
+    /// </summary>
+    public static bool? GetFanFullSpeed()
+    {
+        try
+        {
+            using var fan = Open(FanMethodClass);
+            using var result = fan.InvokeMethod("Fan_Get_FullSpeed", null, null);
+            TestLog.Write($"WMI：Fan_Get_FullSpeed 返回 Status={result["Status"]}");
+            return result["Status"] as bool?;
+        }
+        catch (Exception ex) when (ex is ManagementException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            TestLog.Write("WMI：读取风扇全速开关失败", ex);
+            return null;
+        }
+    }
+
+    /// <summary>设置"风扇全速"开关。</summary>
+    public static void SetFanFullSpeed(bool enabled) => Invoke("设置风扇全速失败", FanMethodClass, fan =>
+    {
+        TestLog.Write($"WMI：Fan_Set_FullSpeed 写入 Status={enabled}");
+        using var parameters = fan.GetMethodParameters("Fan_Set_FullSpeed");
+        parameters["Status"] = enabled;
+        fan.InvokeMethod("Fan_Set_FullSpeed", parameters, null)?.Dispose();
+        return enabled;
+    });
+
     /// <summary>连接 root\WMI 命名空间，ModeWatcher 订阅事件时也用它。</summary>
     public static ManagementScope ConnectScope()
     {
@@ -85,12 +116,14 @@ internal static class LenovoGameZone
         return (FanMode)Convert.ToInt32(result["Data"], CultureInfo.InvariantCulture);
     }
 
-    private static T Invoke<T>(string error, Func<ManagementObject, T> action)
+    private static T Invoke<T>(string error, Func<ManagementObject, T> action) => Invoke(error, GameZoneClass, action);
+
+    private static T Invoke<T>(string error, string className, Func<ManagementObject, T> action)
     {
         try
         {
-            using var gameZone = Open();
-            return action(gameZone);
+            using var instance = Open(className);
+            return action(instance);
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException
                                        or ManagementException { ErrorCode: ManagementStatus.AccessDenied })
@@ -103,11 +136,14 @@ internal static class LenovoGameZone
         }
     }
 
-    private static ManagementObject Open()
+    private const string GameZoneClass = "LENOVO_GAMEZONE_DATA";
+    private const string FanMethodClass = "LENOVO_FAN_METHOD";
+
+    private static ManagementObject Open(string className)
     {
-        using var searcher = new ManagementObjectSearcher(ConnectScope(), new ObjectQuery("SELECT * FROM LENOVO_GAMEZONE_DATA"));
+        using var searcher = new ManagementObjectSearcher(ConnectScope(), new ObjectQuery($"SELECT * FROM {className}"));
         using var instances = searcher.Get();
         return instances.OfType<ManagementObject>().FirstOrDefault()
-            ?? throw new InvalidOperationException("未找到联想散热控制接口（LENOVO_GAMEZONE_DATA），当前机型或 BIOS 可能不支持。");
+            ?? throw new InvalidOperationException($"未找到联想 BIOS 接口（{className}），当前机型或 BIOS 可能不支持。");
     }
 }

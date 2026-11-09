@@ -15,6 +15,20 @@ internal static class Settings
         set => SetFlag(nameof(ShowOsd), value);
     }
 
+    /// <summary>是否自动检查并安装新版本，默认开启。</summary>
+    public static bool AutoUpdate
+    {
+        get => GetFlag(nameof(AutoUpdate));
+        set => SetFlag(nameof(AutoUpdate), value);
+    }
+
+    /// <summary>是否已在首次启动时把托盘图标设为显示在任务栏上（只做一次，之后由用户自己决定）。</summary>
+    public static bool TrayIconPromoted
+    {
+        get => GetFlag(nameof(TrayIconPromoted), defaultValue: false);
+        set => SetFlag(nameof(TrayIconPromoted), value);
+    }
+
     /// <summary>是否启用 Alt+Q 全局热键，默认关闭。</summary>
     public static bool AltQHotkey
     {
@@ -39,6 +53,26 @@ internal static class Settings
         {
             using var key = Registry.CurrentUser.CreateSubKey(KeyPath);
             key.SetValue(nameof(CycleModes), string.Join(',', (value ?? []).Select(m => (int)m)), RegistryValueKind.String);
+        }
+    }
+
+    /// <summary>
+    /// 自定义模式下的"风扇全速"开关，从 Legion Zone 应用自定义模式后的固件状态中学到；没学到过时为 null。
+    /// </summary>
+    public static bool? CustomFanFullSpeed
+    {
+        get
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(KeyPath);
+            return key?.GetValue(nameof(CustomFanFullSpeed)) is int value ? value != 0 : null;
+        }
+        set
+        {
+            using var key = Registry.CurrentUser.CreateSubKey(KeyPath);
+            if (value is { } enabled)
+                key.SetValue(nameof(CustomFanFullSpeed), enabled ? 1 : 0, RegistryValueKind.DWord);
+            else
+                key.DeleteValue(nameof(CustomFanFullSpeed), throwOnMissingValue: false);
         }
     }
 
