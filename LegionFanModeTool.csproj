@@ -7,6 +7,8 @@
     <WindowsPackageType>None</WindowsPackageType>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\legion.ico</ApplicationIcon>
+    <Version Condition="'$(Version)' == ''">1.0.2-dev</Version>
+    <Diagnostics Condition="'$(Diagnostics)' == ''">true</Diagnostics>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -40,7 +42,7 @@
     <WindowsAppSDKSingleFileVerifyConfiguration>true</WindowsAppSDKSingleFileVerifyConfiguration>
     <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
   </PropertyGroup>
-  <!-- 测试版：dotnet publish -p:Diagnostics=true，启动、接口和异常信息追加到 EXE 同目录的日志。
+  <!-- dev 分支默认启用测试日志，可用 -p:Diagnostics=false 关闭；启动、接口和异常信息追加到 EXE 同目录的日志。
        正式版不定义 DIAGNOSTICS，相关调用在编译时被移除（见 Diagnostics.cs） -->
   <PropertyGroup Condition="'$(Diagnostics)' == 'true'">
     <DefineConstants>$(DefineConstants);DIAGNOSTICS</DefineConstants>
