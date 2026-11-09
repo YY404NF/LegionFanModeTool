@@ -29,7 +29,8 @@ jobs:
           $channel = if ($isDev) { 'dev' } else { 'ci' }
           $version = if ($isTag) { $env:GITHUB_REF_NAME.TrimStart('v') } else { "0.0.0-$channel.$env:GITHUB_RUN_NUMBER" }
           $diagnostics = $isDev.ToString().ToLowerInvariant()
-          $name = "LegionFanModeTool_v$version"
+          # 文件名不带版本号：自动更新按固定名称下载对应版本（普通版 / 带运行时版）
+          $name = 'LegionFanModeTool'
           New-Item dist -ItemType Directory | Out-Null
 
           # 依赖已安装的 Windows App SDK 运行时

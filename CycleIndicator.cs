@@ -44,7 +44,7 @@ internal static class CycleIndicator
     }
 
     /// <summary>模板中显示文字的 TextBlock（WinUI 默认模板里名为 "TextBlock"）。</summary>
-    private static TextBlock? FindTextBlock(DependencyObject parent)
+    internal static TextBlock? FindTextBlock(DependencyObject parent)
     {
         for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
         {

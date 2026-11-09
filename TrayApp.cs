@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Drawing;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -15,6 +16,8 @@ internal sealed class TrayApp : IDisposable
 {
     private static readonly FanMode[] MenuModes = [FanMode.Quiet, FanMode.Balanced, FanMode.Performance, FanMode.Custom];
 
+    /// <summary>Legion Zone 切到自定义模式后再写入风扇全速开关，学习前等它写完。</summary>
+    private static readonly TimeSpan LearnDelay = TimeSpan.FromSeconds(3);
 
     private readonly DispatcherQueue _dispatcher = DispatcherQueue.GetForCurrentThread();
     private readonly TrayIcon _trayIcon = new();
@@ -22,13 +25,16 @@ internal sealed class TrayApp : IDisposable
     private readonly ModeOsd _osd = new();
     private readonly ModeWatcher _modeWatcher = new();
     private readonly GlobalHotkey _altQ = new(HotkeyModifiers.Alt, 'Q');
+    private readonly Updater _updater = new();
     private readonly Dictionary<FanMode, MenuFlyoutItem> _modeItems = [];
     private readonly Dictionary<(SvgIcon Glyph, Color Color, double Scale), WriteableBitmap> _menuIcons = [];
     private MenuFlyoutItem? _modelItem;
     private readonly MenuFlyoutItem _autoStartItem = new() { Text = "开机自启" };
+    private readonly MenuFlyoutItem _autoUpdateItem = new() { Text = "自动更新" };
     private readonly MenuFlyoutItem _showOsdItem = new() { Text = "切换显示" };
     private readonly MenuFlyoutItem _altQItem = new() { Text = "Alt+Q" };
     private readonly Dictionary<FanMode, SolidColorBrush> _cycleDots = [];
+    private readonly SolidColorBrush _versionBrush = new();
     private readonly HashSet<FanMode> _cycleModes = [.. Settings.CycleModes ?? MenuModes];
     private FanMode _currentMode;
     private bool _busy;
@@ -43,7 +49,13 @@ internal sealed class TrayApp : IDisposable
         _autoStartItem.Click += (_, _) => ToggleAutoStart();
         _showOsdItem.Click += (_, _) => SetChecked(_showOsdItem, Settings.ShowOsd = !Settings.ShowOsd);
         _altQItem.Click += (_, _) => ToggleAltQ();
-        var exitItem = new MenuFlyoutItem { Text = "退出", Icon = new FontIcon { Glyph = "\uE7E8" } }; // Segoe Fluent Icons：PowerButton
+        _autoUpdateItem.Click += (_, _) => SetChecked(_autoUpdateItem, Settings.AutoUpdate = !Settings.AutoUpdate);
+        var exitItem = new MenuFlyoutItem
+        {
+            Text = "退出",
+            Icon = new FontIcon { Glyph = "\uE7E8" }, // Segoe Fluent Icons：PowerButton
+        };
+        VersionLabel.Attach(exitItem, AppInfo.DisplayVersion, _versionBrush);
         exitItem.Click += (_, _) => Exit();
 
         var menu = new MenuFlyout();
@@ -58,14 +70,17 @@ internal sealed class TrayApp : IDisposable
             menu.Items.Add(_modeItems[mode]);
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(_autoStartItem);
+        menu.Items.Add(_autoUpdateItem);
         menu.Items.Add(_showOsdItem);
         menu.Items.Add(_altQItem);
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(exitItem);
         menu.Opening += (_, _) =>
         {
+            SyncCustomFanFullSpeed();
             UpdateMenuIcons();
             SetChecked(_autoStartItem, AutoStart.IsEnabled());
+            SetChecked(_autoUpdateItem, Settings.AutoUpdate);
             SetChecked(_showOsdItem, Settings.ShowOsd);
             SetChecked(_altQItem, _altQ.IsRegistered);
         };
@@ -77,6 +92,7 @@ internal sealed class TrayApp : IDisposable
         _trayIcon.ToolTip = "散热模式：读取中…";
         UpdateTrayIcon();
         _trayIcon.Show();
+        TrayPlacement.PromoteOnce();
 
         _altQ.Pressed += CycleMode;
         if (Settings.AltQHotkey)
@@ -84,6 +100,9 @@ internal sealed class TrayApp : IDisposable
 
         StartWatching();
         _ = InitializeModeAsync();
+
+        _updater.Downloaded += () => _dispatcher.TryEnqueue(RestartForUpdate);
+        _updater.Start();
     }
 
     private async Task InitializeModeAsync()
@@ -160,11 +179,12 @@ internal sealed class TrayApp : IDisposable
         UpdateCycleDots(Theme.IsAppLight);
     }
 
-    /// <summary>状态灯颜色跟随应用主题（WinUI 资源 SystemFillColorSuccess / TextFillColorTertiary）。</summary>
+    /// <summary>状态灯和"退出"行版本号的颜色跟随应用主题（WinUI 资源 SystemFillColorSuccess / TextFillColorTertiary）。</summary>
     private void UpdateCycleDots(bool light)
     {
         foreach (var (mode, dot) in _cycleDots)
             dot.Color = (Windows.UI.Color)Theme.Resource(_cycleModes.Contains(mode) ? "SystemFillColorSuccess" : "TextFillColorTertiary", light);
+        _versionBrush.Color = (Windows.UI.Color)Theme.Resource("TextFillColorTertiary", light);
     }
 
     /// <summary>切换模式，成功后像 Fn+Q 一样在屏幕上提示切换后的实际模式（可在菜单中关闭）。</summary>
@@ -173,7 +193,7 @@ internal sealed class TrayApp : IDisposable
         if (mode == FanMode.Custom && !_supportsCustomMode)
             return;
 
-        if (await RunAsync($"切换到{mode.DisplayName}", () => LenovoGameZone.SetMode(mode), errorTitle: "切换失败") is not { } actual)
+        if (await RunAsync($"切换到{mode.DisplayName}", () => ApplyMode(mode), errorTitle: "切换失败") is not { } actual)
             return;
 
         // 不支持自定义模式的 BIOS 会忽略设置，模式保持不变
@@ -185,6 +205,75 @@ internal sealed class TrayApp : IDisposable
         }
         else if (Settings.ShowOsd)
             _osd.Show(actual);
+    }
+
+    /// <summary>
+    /// 切换模式（在后台线程执行）。BIOS 的自定义档位不保存风扇全速开关，切到自定义后按学到的值补写，
+    /// 效果与 Legion Zone 应用自定义模式一致；离开自定义时 BIOS 会自动关闭全速，不需要处理。
+    /// </summary>
+    private static FanMode ApplyMode(FanMode mode)
+    {
+        var actual = LenovoGameZone.SetMode(mode);
+        if (actual == FanMode.Custom && Settings.CustomFanFullSpeed is { } fullSpeed)
+        {
+            try
+            {
+                LenovoGameZone.SetFanFullSpeed(fullSpeed);
+            }
+            catch (Exception ex)
+            {
+                // 模式已经切换成功，全速开关写入失败不影响结果
+                CrashLog.Write("设置自定义模式的风扇全速开关失败", ex);
+            }
+        }
+        return actual;
+    }
+
+    /// <summary>
+    /// 同步自定义模式的风扇全速开关，当前不是自定义模式时不处理：
+    /// Legion Zone 正在运行时，它已按用户的配置写入，从固件读出并记住（延迟读取，避免它刚切换、还没写入时读到旧值）；
+    /// Legion Zone 没有运行时，按记住的值补写。BIOS 重启后仍保持自定义档位，但会清掉全速开关，
+    /// Fn+Q 从外部切到自定义时也不会恢复，所以启动、收到模式事件和打开菜单时都要同步。
+    /// </summary>
+    private void SyncCustomFanFullSpeed()
+    {
+        if (_currentMode != FanMode.Custom)
+            return;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                if (IsLegionZoneRunning())
+                {
+                    await Task.Delay(LearnDelay);
+                    if (_currentMode == FanMode.Custom && LenovoGameZone.GetFanFullSpeed() is { } fullSpeed
+                        && Settings.CustomFanFullSpeed != fullSpeed)
+                    {
+                        Settings.CustomFanFullSpeed = fullSpeed;
+                        TestLog.Write($"已从 Legion Zone 学到自定义模式风扇全速：{fullSpeed}");
+                    }
+                }
+                else if (Settings.CustomFanFullSpeed is { } learned && LenovoGameZone.GetFanFullSpeed() is { } current
+                         && current != learned)
+                {
+                    LenovoGameZone.SetFanFullSpeed(learned);
+                    TestLog.Write($"自定义模式风扇全速与学到的不一致（{current}），已恢复为 {learned}");
+                }
+            }
+            catch (Exception ex)
+            {
+                CrashLog.Write("同步自定义模式风扇全速开关失败", ex);
+            }
+        });
+    }
+
+    private static bool IsLegionZoneRunning()
+    {
+        var processes = Process.GetProcessesByName("LegionZone");
+        foreach (var process in processes)
+            process.Dispose();
+        return processes.Length > 0;
     }
 
     private Task<FanMode?> RefreshAsync(bool showErrors) =>
@@ -212,6 +301,7 @@ internal sealed class TrayApp : IDisposable
             result = await Task.Run(operation);
             TestLog.Write($"操作完成：{name}，实际模式：{result.Value.DisplayName}（{(int)result.Value}）");
             UpdateMode(result.Value);
+            SyncCustomFanFullSpeed();
         }
         catch (Exception ex)
         {
@@ -317,12 +407,34 @@ internal sealed class TrayApp : IDisposable
 
     private void Exit()
     {
+        TestLog.Write("退出：释放资源");
         Dispose();
+        TestLog.Write("退出：结束 WinUI 应用");
         Application.Current.Exit();
+    }
+
+    /// <summary>新版本已下载：启动交接进程（它会等本进程退出后完成替换并启动新版本），然后退出。</summary>
+    private void RestartForUpdate()
+    {
+        try
+        {
+            TestLog.Write("自动更新：启动交接进程");
+            Updater.LaunchReplacement();
+        }
+        catch (Exception ex)
+        {
+            // 在 UI 线程回调里，任何异常漏出去都会让 WinUI 直接终止进程；
+            // 启动失败时继续运行当前版本，下次检查再试
+            CrashLog.Write("自动更新：启动交接进程失败", ex);
+            return;
+        }
+        TestLog.Write("自动更新：交接进程已启动，退出本进程");
+        Exit();
     }
 
     public void Dispose()
     {
+        _updater.Dispose();
         _modeWatcher.Dispose();
         _trayIcon.Dispose();
         _menuHost.Dispose();

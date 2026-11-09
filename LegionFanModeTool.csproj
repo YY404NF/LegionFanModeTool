@@ -39,6 +39,8 @@
     <ProjectPriFileName>resources.pri</ProjectPriFileName>
     <WindowsAppSDKSingleFileVerifyConfiguration>true</WindowsAppSDKSingleFileVerifyConfiguration>
     <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+    <!-- 程序据此显示 "v1.0.2r"，自动更新也据此下载带运行时的版本（见 AppInfo.cs） -->
+    <DefineConstants>$(DefineConstants);WITH_RUNTIME</DefineConstants>
   </PropertyGroup>
   <!-- 测试版：dotnet publish -p:Diagnostics=true，启动、接口和异常信息追加到 EXE 同目录的日志。
        正式版不定义 DIAGNOSTICS，相关调用在编译时被移除（见 Diagnostics.cs） -->

@@ -87,6 +87,7 @@ internal static class Diagnostics
                 sb.AppendLine(CultureInfo.InvariantCulture, $"{name}：{key?.GetValue(name)}");
             var model = DeviceModel.DisplayName;
             sb.AppendLine(CultureInfo.InvariantCulture, $"显示型号：{(model is null ? "（未映射，不显示）" : model.Model + " " + model.Badge)}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"已学到的自定义模式风扇全速：{Settings.CustomFanFullSpeed?.ToString() ?? "未学到"}");
         });
 
         sb.AppendLine().AppendLine("[Legion Zone]");
@@ -114,7 +115,7 @@ internal static class Diagnostics
 
         // 只调用无参数的 Get*/IsSupport* 方法，都是只读查询，不改变任何设置；
         // LENOVO_OTHER_METHOD 的 GetSupportThermalMode、GetCustomModeAbility 用来判断新机型支持的模式
-        foreach (var className in (ReadOnlySpan<string>)["LENOVO_GAMEZONE_DATA", "LENOVO_OTHER_METHOD"])
+        foreach (var className in (ReadOnlySpan<string>)["LENOVO_GAMEZONE_DATA", "LENOVO_OTHER_METHOD", "LENOVO_FAN_METHOD"])
         {
             sb.AppendLine().AppendLine(CultureInfo.InvariantCulture, $"[{className} 只读查询]");
             Section(sb, () => QueryReadOnlyMethods(sb, className));

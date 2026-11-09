@@ -9,7 +9,7 @@ namespace LegionFanModeTool;
 internal static class Program
 {
     [STAThread]
-    private static void Main()
+    private static void Main(string[] args)
     {
         CrashLog.InstallProcessHandlers();
         TestLog.Write($"""
@@ -22,6 +22,10 @@ internal static class Program
             """);
         try
         {
+            // 自动更新的交接进程完成替换后直接退出，不初始化界面
+            if (Updater.HandleStartup(args))
+                return;
+
             TestLog.Write("启动阶段：检查单实例互斥锁");
             using var mutex = new Mutex(true, @"Local\LegionFanModeTool", out var isFirstInstance);
             if (!isFirstInstance)
