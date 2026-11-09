@@ -7,7 +7,7 @@
     <WindowsPackageType>None</WindowsPackageType>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\legion.ico</ApplicationIcon>
-    <Version Condition="'$(Version)' == ''">1.0.3-dev</Version>
+    <Version Condition="'$(Version)' == ''">1.0.4-dev</Version>
     <Diagnostics Condition="'$(Diagnostics)' == ''">true</Diagnostics>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
