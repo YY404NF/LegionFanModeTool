@@ -13,6 +13,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Platforms>x64</Platforms>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <DefaultItemExcludes>$(DefaultItemExcludes);publish\**;out\**;dist\**;docs\**</DefaultItemExcludes>
 
     <!-- 发布为单个 exe：自带裁剪并压缩过的 .NET 运行时，Windows App SDK 使用系统已安装的运行时。
          Windows App SDK 的单文件检查是为它自带运行时的发布方式设计的，这里不适用，关掉它；
@@ -29,6 +30,19 @@
     <IncludeAllContentForSelfExtract>false</IncludeAllContentForSelfExtract>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <DebugType>none</DebugType>
+  </PropertyGroup>
+  <!-- 随包运行时需要合并后的 resources.pri，并将其随单文件解压。
+       EnableMsixTooling 仅启用资源构建工具，应用仍为非 MSIX。 -->
+  <PropertyGroup Condition="'$(WindowsAppSDKSelfContained)' == 'true'">
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <ProjectPriFileName>resources.pri</ProjectPriFileName>
+    <WindowsAppSDKSingleFileVerifyConfiguration>true</WindowsAppSDKSingleFileVerifyConfiguration>
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+  </PropertyGroup>
+  <!-- 测试版：dotnet publish -p:Diagnostics=true，启动、接口和异常信息追加到 EXE 同目录的日志。
+       正式版不定义 DIAGNOSTICS，相关调用在编译时被移除（见 Diagnostics.cs） -->
+  <PropertyGroup Condition="'$(Diagnostics)' == 'true'">
+    <DefineConstants>$(DefineConstants);DIAGNOSTICS</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <!-- System.Management 内部用反射创建 WMI 的 COM 对象，裁剪会误删，整个保留 -->

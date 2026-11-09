@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Win32;
 
 namespace LegionFanModeTool;
@@ -19,6 +20,26 @@ internal static class Settings
     {
         get => GetFlag(nameof(AltQHotkey), defaultValue: false);
         set => SetFlag(nameof(AltQHotkey), value);
+    }
+
+    /// <summary>
+    /// 左键单击托盘图标和 Alt+Q 循环切换的模式，保存为逗号分隔的模式数值（空字符串表示一个都不切换）；
+    /// 没有保存过时为 null，表示菜单中的模式全部参与。
+    /// </summary>
+    public static FanMode[]? CycleModes
+    {
+        get
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(KeyPath);
+            return key?.GetValue(nameof(CycleModes)) is string value
+                ? [.. value.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(v => (FanMode)int.Parse(v, CultureInfo.InvariantCulture))]
+                : null;
+        }
+        set
+        {
+            using var key = Registry.CurrentUser.CreateSubKey(KeyPath);
+            key.SetValue(nameof(CycleModes), string.Join(',', (value ?? []).Select(m => (int)m)), RegistryValueKind.String);
+        }
     }
 
     private static bool GetFlag(string name, bool defaultValue = true)

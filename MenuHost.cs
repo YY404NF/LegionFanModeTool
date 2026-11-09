@@ -17,6 +17,7 @@ namespace LegionFanModeTool;
 internal sealed partial class MenuHost : IDisposable
 {
     private readonly Window _window;
+    private readonly AppWindow _appWindow;
     private readonly Grid _root = new();
     private readonly MenuFlyout _menu;
     private readonly nint _hwnd;
@@ -40,15 +41,16 @@ internal sealed partial class MenuHost : IDisposable
         }
 
         _window = new Window { Content = _root };
-        _menu.Closed += (_, _) => _window.AppWindow.Hide();
+        _appWindow = _window.AppWindow;
+        _menu.Closed += OnMenuClosed;
         _window.Activated += (_, e) =>
         {
             // 点击菜单外部时窗口失去激活，关闭菜单
-            if (e.WindowActivationState == WindowActivationState.Deactivated)
+            if (!_disposing && e.WindowActivationState == WindowActivationState.Deactivated)
                 _menu.Hide();
         };
 
-        var appWindow = _window.AppWindow;
+        var appWindow = _appWindow;
         // 菜单打开时按 Alt+F4 会关闭宿主窗口，之后菜单再也打不开；只在程序退出时真正关闭
         appWindow.Closing += (sender, e) =>
         {
@@ -57,7 +59,10 @@ internal sealed partial class MenuHost : IDisposable
             e.Cancel = true;
             sender.Hide();
         };
-        appWindow.SetPresenter(OverlappedPresenter.CreateForContextMenu());
+        var presenter = OverlappedPresenter.CreateForContextMenu();
+        // 隐藏图标面板是置顶窗口，菜单宿主也需置顶，避免菜单底部被它覆盖。
+        presenter.IsAlwaysOnTop = true;
+        appWindow.SetPresenter(presenter);
         appWindow.IsShownInSwitchers = false;
 
         _hwnd = Win32Interop.GetWindowFromWindowId(appWindow.Id);
@@ -73,7 +78,10 @@ internal sealed partial class MenuHost : IDisposable
     /// <summary>在屏幕物理像素坐标处显示菜单。</summary>
     public async Task ShowAsync(PointInt32 position)
     {
-        _window.AppWindow.MoveAndResize(new RectInt32(position.X, position.Y, 1, 1));
+        if (_disposing)
+            return;
+
+        _appWindow.MoveAndResize(new RectInt32(position.X, position.Y, 1, 1));
         _window.Activate();
         // 托盘回调期间系统允许本进程抢占前台，这样点击菜单外部才能正常关闭菜单
         SetForegroundWindow(_hwnd);
@@ -85,6 +93,9 @@ internal sealed partial class MenuHost : IDisposable
             await loaded.Task;
         }
 
+        if (_disposing)
+            return;
+
         _menu.ShowAt(_root, new FlyoutShowOptions
         {
             Position = new(0, 0),
@@ -93,9 +104,20 @@ internal sealed partial class MenuHost : IDisposable
         });
     }
 
+    private void OnMenuClosed(object? sender, object args)
+    {
+        if (!_disposing)
+            _appWindow.Hide();
+    }
+
     public void Dispose()
     {
+        if (_disposing)
+            return;
+
         _disposing = true;
+        _menu.Closed -= OnMenuClosed;
+        _menu.Hide();
         _window.Close();
     }
 

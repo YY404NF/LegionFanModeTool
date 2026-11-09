@@ -22,10 +22,18 @@ internal static class AutoStart
         try
         {
             var xml = TaskSchedulerService.OpenRootFolder().GetTask(TaskName).GetXml();
-            return xml.Contains(SecurityElement.Escape(ExePath), StringComparison.OrdinalIgnoreCase);
+            var enabled = xml.Contains(SecurityElement.Escape(ExePath), StringComparison.OrdinalIgnoreCase);
+            TestLog.Write($"读取开机自启状态：{enabled}");
+            return enabled;
         }
-        catch (Exception ex) when (ex is FileNotFoundException or UnauthorizedAccessException or COMException)
+        catch (FileNotFoundException)
         {
+            TestLog.Write("读取开机自启状态：未创建计划任务，未启用");
+            return false;
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or COMException)
+        {
+            TestLog.Write("读取开机自启状态失败", ex);
             return false;
         }
     }

@@ -30,12 +30,15 @@ internal sealed class ModeWatcher : IDisposable
             watcher.EventArrived += OnEventArrived;
             try
             {
+                TestLog.Write($"WMI：开始订阅 {eventClass}");
                 watcher.Start();
                 _watchers.Add(watcher);
+                TestLog.Write($"WMI：已订阅 {eventClass}");
             }
             catch (ManagementException ex)
             {
                 lastError = ex;
+                TestLog.Write($"WMI：订阅 {eventClass} 失败", ex);
                 watcher.EventArrived -= OnEventArrived;
                 watcher.Dispose();
             }
@@ -47,6 +50,7 @@ internal sealed class ModeWatcher : IDisposable
 
     private void OnEventArrived(object sender, EventArrivedEventArgs e)
     {
+        TestLog.Write($"WMI：收到模式事件 {e.NewEvent.ClassPath.ClassName}");
         e.NewEvent.Dispose();
         ModeChanged?.Invoke();
     }
@@ -60,9 +64,9 @@ internal sealed class ModeWatcher : IDisposable
             {
                 watcher.Stop();
             }
-            catch (ManagementException)
+            catch (ManagementException ex)
             {
-                // 退出时 WMI 连接可能已断开，忽略
+                TestLog.Write("WMI：停止事件订阅失败", ex);
             }
             watcher.Dispose();
         }

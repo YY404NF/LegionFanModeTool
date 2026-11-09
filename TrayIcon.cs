@@ -69,6 +69,7 @@ internal sealed unsafe partial class TrayIcon : IDisposable
     {
         var data = CreateData(NifMessage | NifIcon | NifTip | NifShowTip);
         _added = Shell_NotifyIconW(NimAdd, &data);
+        TestLog.Write($"注册托盘图标：{(_added ? "成功" : "失败")}");
         if (_added)
         {
             data.uTimeoutOrVersion = NotifyIconVersion4;

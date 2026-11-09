@@ -18,6 +18,9 @@ internal static class DeviceModel
     private static readonly FrozenDictionary<string, DeviceName> DisplayNames = new Dictionary<string, DeviceName>
     {
         ["Lenovo Legion R9000P2021H"] = new("R9000P", "2021H"),
+        // 2025 款：Legion Zone 显示为 "Legion R9000P ADR10"，BIOS 产品名可能带或不带 "Lenovo " 前缀
+        ["Legion R9000P ADR10"] = new("R9000P", "ADR10"),
+        ["Lenovo Legion R9000P ADR10"] = new("R9000P", "ADR10"),
     }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>显示用的型号，首次访问时读取一次；读取不到或没有映射时为 null。</summary>
@@ -30,10 +33,12 @@ internal static class DeviceModel
             using var key = Registry.LocalMachine.OpenSubKey(BiosKeyPath);
             // SystemVersion 是完整产品名（如 Lenovo Legion R9000P2021H），个别机型为空时退回 SystemFamily
             var name = ReadValue(key, "SystemVersion") ?? ReadValue(key, "SystemFamily");
+            TestLog.Write($"读取 BIOS 产品名：{name ?? "（空）"}");
             return name is not null && DisplayNames.TryGetValue(name, out var displayName) ? displayName : null;
         }
         catch (Exception ex) when (ex is System.Security.SecurityException or UnauthorizedAccessException or IOException)
         {
+            TestLog.Write("读取 BIOS 产品名失败", ex);
             return null;
         }
     }
