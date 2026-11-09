@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
     tags: ['v*']
   pull_request:
   workflow_dispatch:
@@ -25,22 +25,25 @@ jobs:
         shell: pwsh
         run: |
           $isTag = $env:GITHUB_REF_TYPE -eq 'tag'
-          $version = if ($isTag) { $env:GITHUB_REF_NAME.TrimStart('v') } else { '0.0.0-ci.' + $env:GITHUB_RUN_NUMBER }
+          $isDev = $env:GITHUB_REF_NAME -eq 'dev' -or $env:GITHUB_BASE_REF -eq 'dev'
+          $channel = if ($isDev) { 'dev' } else { 'ci' }
+          $version = if ($isTag) { $env:GITHUB_REF_NAME.TrimStart('v') } else { "0.0.0-$channel.$env:GITHUB_RUN_NUMBER" }
+          $diagnostics = $isDev.ToString().ToLowerInvariant()
           $name = "LegionFanModeTool_v$version"
           New-Item dist -ItemType Directory | Out-Null
 
           # 依赖已安装的 Windows App SDK 运行时
-          dotnet publish LegionFanModeTool.csproj -c Release -o out/fd -p:Platform=x64 -p:Version=$version -p:Diagnostics=false
+          dotnet publish LegionFanModeTool.csproj -c Release -o out/fd -p:Platform=x64 -p:Version=$version -p:Diagnostics=$diagnostics
           Copy-Item out/fd/LegionFanModeTool.exe "dist/$name.exe"
 
           # 自带 Windows App SDK 运行时，开箱即用；两种发布方式的中间文件不能混用，先清掉
           Remove-Item bin, obj -Recurse -Force
-          dotnet publish LegionFanModeTool.csproj -c Release -o out/sc -p:Platform=x64 -p:Version=$version -p:Diagnostics=false -p:WindowsAppSDKSelfContained=true -p:IncludeAllContentForSelfExtract=true
+          dotnet publish LegionFanModeTool.csproj -c Release -o out/sc -p:Platform=x64 -p:Version=$version -p:Diagnostics=$diagnostics -p:WindowsAppSDKSelfContained=true -p:IncludeAllContentForSelfExtract=true
           Copy-Item out/sc/LegionFanModeTool.exe "dist/${name}_with_runtime.exe"
 
       - uses: actions/upload-artifact@v7.0.2
         with:
-          name: LegionFanModeTool
+          name: ${{ (github.ref_name == 'dev' || github.base_ref == 'dev') && 'LegionFanModeTool-dev' || 'LegionFanModeTool' }}
           path: dist/*.exe
 
       - name: 创建 Release
