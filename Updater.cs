@@ -11,7 +11,7 @@ namespace LegionFanModeTool;
 /// 右键托盘图标时也会检查一次（<see cref="CheckNow"/>，两次检查至少间隔 1 分钟）。
 /// 有更高版本时下载与本程序同类型的附件（普通版 / 带运行时版）到 "程序路径.new"，按 Release 提供的 SHA-256 校验。
 /// 连不上 GitHub、超时或任何一步出错都直接放弃，下次再试，不打扰用户。
-/// 版本号带预发布后缀的测试版（如 1.0.2-dev）不自动更新。
+/// 正式版遇到更高的版本才更新；测试版（如 1.0.5t）遇到同级或更高的正式版（1.0.5 及以上）就更新为正式版。
 /// <para>
 /// 替换分三步交接，每个进程都不改动自己正在运行的文件（单文件程序按路径延迟加载程序集，
 /// 运行中改名会导致后续加载失败）：本进程启动 .new 并退出 → .new 等本进程退出后把自己复制到原路径，
@@ -61,16 +61,11 @@ internal sealed class Updater : IDisposable
 
     public void Start()
     {
-        if (!Version.TryParse(AppInfo.Version, out _))
-        {
-            TestLog.Write($"自动更新：{AppInfo.Version} 是测试版，不检查更新");
-            return;
-        }
         _enabled = true;
         _ = RunAsync(_cts.Token);
     }
 
-    /// <summary>立即检查一次（右键托盘图标时调用）；测试版、未启用自动更新或距上次检查不到 1 分钟时不检查。</summary>
+    /// <summary>立即检查一次（右键托盘图标时调用）；未启用自动更新或距上次检查不到 1 分钟时不检查。</summary>
     public void CheckNow()
     {
         if (_enabled)
@@ -243,7 +238,7 @@ internal sealed class Updater : IDisposable
 
         if (release.GetProperty("draft").GetBoolean() || release.GetProperty("prerelease").GetBoolean()
             || !Version.TryParse(release.GetProperty("tag_name").GetString()?.TrimStart('v'), out var latest)
-            || latest <= Version.Parse(AppInfo.Version))
+            || !IsUpdate(latest))
         {
             TestLog.Write($"自动更新：没有新版本（当前 {AppInfo.Version}，最新 {release.GetProperty("tag_name").GetString()}）");
             return null;
@@ -267,6 +262,10 @@ internal sealed class Updater : IDisposable
         TestLog.Write($"自动更新：{latest} 中没有 {AppInfo.ReleaseAssetName}，跳过");
         return null;
     }
+
+    /// <summary>正式版要求更高的版本；测试版遇到同级的正式版也更新，把测试版换成对应的正式版。</summary>
+    private static bool IsUpdate(Version latest) =>
+        AppInfo.IsTestBuild ? latest >= AppInfo.CoreVersion : latest > AppInfo.CoreVersion;
 
     /// <summary>下载到 <paramref name="path"/> 并校验大小和 SHA-256，不一致时抛出 <see cref="InvalidDataException"/>。</summary>
     private static async Task DownloadAsync(HttpClient http, Update update, string path, CancellationToken cancellation)

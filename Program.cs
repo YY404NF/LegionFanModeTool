@@ -11,6 +11,7 @@ internal static class Program
     private static void Main(string[] args)
     {
         CrashLog.InstallProcessHandlers();
+        DiagUpload.SendPending();
         TestLog.Write($"""
             ==== 程序启动 ====
             EXE：{Environment.ProcessPath}
@@ -44,6 +45,7 @@ internal static class Program
         finally
         {
             TestLog.Write("Main：程序结束");
+            DiagUpload.FlushAndWait("exit");
         }
     }
 

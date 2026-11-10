@@ -21,7 +21,10 @@ internal static class CrashLog
     public static void InstallProcessHandlers()
     {
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
             Write("AppDomain.UnhandledException（进程即将退出）", e.ExceptionObject as Exception);
+            DiagUpload.FlushAndWait("error"); // 进程马上结束，同步上传
+        };
         TaskScheduler.UnobservedTaskException += (_, e) =>
         {
             Write("TaskScheduler.UnobservedTaskException", e.Exception);
@@ -34,6 +37,7 @@ internal static class CrashLog
     {
 #if DIAGNOSTICS
         TestLog.Write(source, exception);
+        DiagUpload.FlushNow("error");
 #else
         var entry = new StringBuilder()
             .Append(CultureInfo.InvariantCulture, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {source}").AppendLine();

@@ -12,38 +12,72 @@ internal static class LenovoGameZone
 
     public static FanMode GetMode() => Invoke("读取散热模式失败", ReadMode);
 
-    /// <summary>只读查询固件是否声明支持自定义模式；接口缺失或查询失败时不提供该选项。</summary>
-    public static bool SupportsCustomMode()
+    /// <summary>新一代接口（如 R9000P ADR10）中"支持的散热模式"的功能编号，用 LENOVO_OTHER_METHOD.GetFeatureValue 读取。</summary>
+    private const uint SupportedThermalModeFeature = 0x70000;
+
+    /// <summary>
+    /// 读取固件声明支持的散热模式位图：位 0、1、2 为安静、均衡、野兽，位 4 为极致，位 16 为自定义。
+    /// 旧机型（如 R9000P 2021H）用 LENOVO_OTHER_METHOD.GetSupportThermalMode；新机型没有这个方法，
+    /// 改用 GetFeatureValue(0x70000)，与 Legion Zone 的判断方式一致。接口缺失或读取失败时为 null。
+    /// </summary>
+    public static uint? GetSupportedModeMask()
     {
         try
         {
-            TestLog.Write("WMI：查询 LENOVO_OTHER_METHOD.GetSupportThermalMode");
             using var searcher = new ManagementObjectSearcher(ConnectScope(), new ObjectQuery("SELECT * FROM LENOVO_OTHER_METHOD"));
             using var instances = searcher.Get();
             using var instance = instances.OfType<ManagementObject>().FirstOrDefault();
             if (instance is null)
             {
-                TestLog.Write("WMI：LENOVO_OTHER_METHOD 无实例，不显示自定义模式");
-                return false;
+                TestLog.Write("WMI：LENOVO_OTHER_METHOD 无实例");
+                return null;
             }
 
-            using var result = instance.InvokeMethod("GetSupportThermalMode", null, null);
-            TestLog.Write($"WMI：GetSupportThermalMode 返回 mode={result?["mode"]}");
-            // 位 0、1、2 分别为安静、均衡、野兽；位 16 为自定义。
-            return result?["mode"] is { } value
-                && (Convert.ToUInt32(value, CultureInfo.InvariantCulture) & (1u << 16)) != 0;
+            using var cls = new ManagementClass(instance.Scope, new ManagementPath("LENOVO_OTHER_METHOD"), null);
+            var methods = cls.Methods.Cast<MethodData>().Select(m => m.Name).ToHashSet(StringComparer.Ordinal);
+            if (methods.Contains("GetSupportThermalMode"))
+            {
+                using var result = instance.InvokeMethod("GetSupportThermalMode", null, null);
+                TestLog.Write($"WMI：GetSupportThermalMode 返回 mode={ReadProperty(result, "mode")}");
+                return ToMask(ReadProperty(result, "mode"));
+            }
+            if (methods.Contains("GetFeatureValue"))
+            {
+                using var parameters = instance.GetMethodParameters("GetFeatureValue");
+                SetUInt(parameters, "IDs", SupportedThermalModeFeature);
+                using var result = instance.InvokeMethod("GetFeatureValue", parameters, null);
+                TestLog.Write($"WMI：GetFeatureValue(0x{SupportedThermalModeFeature:X}) 返回 value={ReadProperty(result, "value")}");
+                return ToMask(ReadProperty(result, "value"));
+            }
+            TestLog.Write("WMI：LENOVO_OTHER_METHOD 没有可用的散热模式查询方法");
+            return null;
         }
         catch (ManagementException ex) when (ex.ErrorCode == ManagementStatus.InvalidClass)
         {
-            TestLog.Write("WMI：当前系统未提供 LENOVO_OTHER_METHOD，不显示自定义模式");
-            return false;
+            TestLog.Write("WMI：当前系统未提供 LENOVO_OTHER_METHOD");
+            return null;
         }
         catch (Exception ex)
         {
-            CrashLog.Write("检测自定义模式支持情况失败", ex);
-            return false;
+            CrashLog.Write("读取支持的散热模式失败", ex);
+            return null;
         }
     }
+
+    /// <summary>固件是否声明支持自定义模式（位 16）；无法确定时不提供该选项。</summary>
+    public static bool SupportsCustomMode() => GetSupportedModeMask() is { } mask && (mask & (1u << 16)) != 0;
+
+    private static uint? ToMask(object? value) => value is null ? null : Convert.ToUInt32(value, CultureInfo.InvariantCulture);
+
+    /// <summary>按 WMI 参数声明的类型写入整数，避免类型不匹配。</summary>
+    private static void SetUInt(ManagementBaseObject parameters, string name, uint value) =>
+        parameters[name] = parameters.Properties[name].Type switch
+        {
+            CimType.SInt32 => unchecked((int)value),
+            CimType.UInt64 => (ulong)value,
+            CimType.SInt64 => (long)value,
+            _ => value,
+        };
 
     /// <summary>切换散热模式，返回切换后实际读到的模式。</summary>
     public static FanMode SetMode(FanMode mode)
@@ -63,36 +97,91 @@ internal static class LenovoGameZone
         });
     }
 
+    /// <summary>新一代接口中"风扇全速"的功能编号（LENOVO_OTHER_METHOD.GetFeatureValue / SetFeatureValue）。</summary>
+    private const uint FanFullSpeedFeature = 0x04020000;
+
     /// <summary>
-    /// 读取"风扇全速"开关（LENOVO_FAN_METHOD）；接口不存在或读取失败时为 null。
-    /// BIOS 不把它保存在自定义档位里：离开自定义时自动关闭，切回自定义也不会恢复，
-    /// Legion Zone 每次应用自定义模式时会重新写入。
+    /// 风扇全速开关所在的接口：旧机型（如 R9000P 2021H）是 LENOVO_FAN_METHOD.Fan_Get/Set_FullSpeed；
+    /// 新机型（如 R9000P ADR10）没有这两个方法，改用 GetFeatureValue / SetFeatureValue(0x04020000)，
+    /// 与 Legion Zone、Lenovo Legion Toolkit 一致。首次使用时检测一次。
+    /// </summary>
+    private static readonly Lazy<bool> UsesFanMethod = new(() => HasMethod(FanMethodClass, "Fan_Get_FullSpeed"));
+
+    /// <summary>
+    /// 读取"风扇全速"开关；接口不存在或读取失败时为 null。
+    /// BIOS 不把它保存在自定义档位里，切回自定义也不会恢复，Legion Zone 每次应用自定义模式时会重新写入。
     /// </summary>
     public static bool? GetFanFullSpeed()
     {
         try
         {
-            using var fan = Open(FanMethodClass);
-            using var result = fan.InvokeMethod("Fan_Get_FullSpeed", null, null);
-            TestLog.Write($"WMI：Fan_Get_FullSpeed 返回 Status={result["Status"]}");
-            return result["Status"] as bool?;
+            if (UsesFanMethod.Value)
+            {
+                using var fan = Open(FanMethodClass);
+                using var result = fan.InvokeMethod("Fan_Get_FullSpeed", null, null);
+                TestLog.Write($"WMI：Fan_Get_FullSpeed 返回 Status={ReadProperty(result, "Status")}");
+                return ReadProperty(result, "Status") is { } status ? Convert.ToBoolean(status, CultureInfo.InvariantCulture) : null;
+            }
+
+            using var other = Open(OtherMethodClass);
+            using var parameters = other.GetMethodParameters("GetFeatureValue");
+            SetUInt(parameters, "IDs", FanFullSpeedFeature);
+            using var output = other.InvokeMethod("GetFeatureValue", parameters, null);
+            var value = ReadProperty(output, "value");
+            TestLog.Write($"WMI：GetFeatureValue(0x{FanFullSpeedFeature:X}) 返回 value={value}");
+            return value is null ? null : Convert.ToUInt32(value, CultureInfo.InvariantCulture) != 0;
         }
-        catch (Exception ex) when (ex is ManagementException or InvalidOperationException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is ManagementException or InvalidOperationException or UnauthorizedAccessException or FormatException)
         {
-            TestLog.Write("WMI：读取风扇全速开关失败", ex);
+            TestLog.Write($"WMI：读取风扇全速开关失败：{ex.GetType().Name} {ex.Message.Trim()}");
             return null;
         }
     }
 
     /// <summary>设置"风扇全速"开关。</summary>
-    public static void SetFanFullSpeed(bool enabled) => Invoke("设置风扇全速失败", FanMethodClass, fan =>
+    public static void SetFanFullSpeed(bool enabled)
     {
-        TestLog.Write($"WMI：Fan_Set_FullSpeed 写入 Status={enabled}");
-        using var parameters = fan.GetMethodParameters("Fan_Set_FullSpeed");
-        parameters["Status"] = enabled;
-        fan.InvokeMethod("Fan_Set_FullSpeed", parameters, null)?.Dispose();
-        return enabled;
-    });
+        if (UsesFanMethod.Value)
+        {
+            Invoke("设置风扇全速失败", FanMethodClass, fan =>
+            {
+                TestLog.Write($"WMI：Fan_Set_FullSpeed 写入 Status={enabled}");
+                using var parameters = fan.GetMethodParameters("Fan_Set_FullSpeed");
+                parameters["Status"] = enabled;
+                fan.InvokeMethod("Fan_Set_FullSpeed", parameters, null)?.Dispose();
+                return enabled;
+            });
+            return;
+        }
+
+        Invoke("设置风扇全速失败", OtherMethodClass, other =>
+        {
+            TestLog.Write($"WMI：SetFeatureValue(0x{FanFullSpeedFeature:X}) 写入 value={(enabled ? 1 : 0)}");
+            using var parameters = other.GetMethodParameters("SetFeatureValue");
+            SetUInt(parameters, "IDs", FanFullSpeedFeature);
+            SetUInt(parameters, "value", enabled ? 1u : 0u);
+            other.InvokeMethod("SetFeatureValue", parameters, null)?.Dispose();
+            return enabled;
+        });
+    }
+
+    /// <summary>某个 WMI 类是否提供指定方法（接口缺失时为 false）。</summary>
+    private static bool HasMethod(string className, string methodName)
+    {
+        try
+        {
+            using var cls = new ManagementClass(ConnectScope(), new ManagementPath(className), null);
+            return cls.Methods.Cast<MethodData>().Any(m => string.Equals(m.Name, methodName, StringComparison.OrdinalIgnoreCase));
+        }
+        catch (ManagementException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>按名称读取输出参数，忽略大小写（Legion Zone 写作 "value"，Lenovo Legion Toolkit 写作 "Value"）。</summary>
+    private static object? ReadProperty(ManagementBaseObject? result, string name) =>
+        result?.Properties.Cast<PropertyData>().FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))?.Value;
 
     /// <summary>连接 root\WMI 命名空间，ModeWatcher 订阅事件时也用它。</summary>
     public static ManagementScope ConnectScope()
@@ -138,6 +227,7 @@ internal static class LenovoGameZone
 
     private const string GameZoneClass = "LENOVO_GAMEZONE_DATA";
     private const string FanMethodClass = "LENOVO_FAN_METHOD";
+    private const string OtherMethodClass = "LENOVO_OTHER_METHOD";
 
     private static ManagementObject Open(string className)
     {

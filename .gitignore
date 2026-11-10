@@ -4,3 +4,7 @@ bin/
 obj/
 *.user
 publish/
+
+# 诊断接收接口（diag-worker）
+node_modules/
+.wrangler/

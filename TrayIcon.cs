@@ -77,12 +77,16 @@ internal sealed unsafe partial class TrayIcon : IDisposable
         }
     }
 
-    public void ShowError(string title, string text)
+    public void ShowError(string title, string text) => ShowBalloon(title, text, NiifError);
+
+    public void ShowInfo(string title, string text) => ShowBalloon(title, text, NiifInfo);
+
+    private void ShowBalloon(string title, string text, uint icon)
     {
         var data = CreateData(NifInfo);
         Copy(title, data.szInfoTitle, 64);
         Copy(text, data.szInfo, 256);
-        data.dwInfoFlags = NiifError;
+        data.dwInfoFlags = icon;
         Shell_NotifyIconW(NimModify, &data);
     }
 
@@ -172,6 +176,7 @@ internal sealed unsafe partial class TrayIcon : IDisposable
 
     private const uint NimAdd = 0, NimModify = 1, NimDelete = 2, NimSetVersion = 4;
     private const uint NifMessage = 0x01, NifIcon = 0x02, NifTip = 0x04, NifInfo = 0x10, NifShowTip = 0x80;
+    private const uint NiifInfo = 0x01;
     private const uint NiifError = 0x03;
     private const uint NotifyIconVersion4 = 4;
     private const uint NinSelect = 0x400, NinKeySelect = 0x401;

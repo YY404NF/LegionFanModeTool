@@ -1,0 +1,23 @@
+# LegionFanModeTool 测试版诊断接收接口：POST https://diag.404nf.com/lfmt/v1/report
+# 部署：在本目录 npm install 后，设置环境变量 CLOUDFLARE_API_TOKEN 和 CLOUDFLARE_ACCOUNT_ID，运行 npm run deploy
+# diag.404nf.com 按路径分给各项目的 Worker，本 Worker 只处理 /lfmt/*
+name = "diag-lfmt"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+workers_dev = false
+
+# diag.404nf.com/* 是兜底路由：占位 DNS 记录没有真实源站，未匹配的路径由本 Worker 返回 404（而不是 522）。
+# 以后其他项目的路由（如 diag.404nf.com/xxx/*）更具体，会优先匹配。
+routes = [
+  { pattern = "diag.404nf.com/lfmt/*", zone_name = "404nf.com" },
+  { pattern = "diag.404nf.com/*", zone_name = "404nf.com" }
+]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "diag-lfmt"
+database_id = "5fcc9a81-eec2-46f9-89af-eb14724faf6b"
+
+# 每天清理一次过期记录
+[triggers]
+crons = ["17 3 * * *"]
