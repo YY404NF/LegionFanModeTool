@@ -27,7 +27,11 @@ jobs:
           $isTag = $env:GITHUB_REF_TYPE -eq 'tag'
           $isDev = $env:GITHUB_REF_NAME -eq 'dev' -or $env:GITHUB_BASE_REF -eq 'dev'
           $channel = if ($isDev) { 'dev' } else { 'ci' }
-          $version = if ($isTag) { $env:GITHUB_REF_NAME.TrimStart('v') } else { "0.0.0-$channel.$env:GITHUB_RUN_NUMBER" }
+          # dev 测试版用 csproj 里的默认版本（如 1.0.5-dev）加构建编号：测试版遇到同级正式版会自动更新，数字部分不能是 0.0.0
+          $base = [regex]::Match((Get-Content LegionFanModeTool.csproj -Raw), "<Version Condition=[^>]*>([^<]+)</Version>").Groups[1].Value
+          $version = if ($isTag) { $env:GITHUB_REF_NAME.TrimStart('v') }
+                     elseif ($isDev -and $base) { "$base.$env:GITHUB_RUN_NUMBER" }
+                     else { "0.0.0-$channel.$env:GITHUB_RUN_NUMBER" }
           $diagnostics = $isDev.ToString().ToLowerInvariant()
           # 文件名不带版本号：自动更新按固定名称下载对应版本（普通版 / 带运行时版）
           $name = 'LegionFanModeTool'

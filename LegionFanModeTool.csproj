@@ -14,7 +14,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Platforms>x64</Platforms>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <DefaultItemExcludes>$(DefaultItemExcludes);publish\**;out\**;dist\**;docs\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);publish\**;out\**;dist\**;docs\**;diag-worker\**</DefaultItemExcludes>
 
     <!-- 发布为单个 exe：自带裁剪并压缩过的 .NET 运行时，Windows App SDK 使用系统已安装的运行时。
          Windows App SDK 的单文件检查是为它自带运行时的发布方式设计的，这里不适用，关掉它；

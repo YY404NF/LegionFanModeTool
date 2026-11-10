@@ -105,6 +105,7 @@ internal sealed class TrayApp : IDisposable
         _trayIcon.ToolTip = "散热模式：读取中…";
         UpdateTrayIcon();
         _trayIcon.Show();
+        DiagUpload.NotifyFirstRun(_trayIcon);
 
         _altQ.Pressed += CycleMode;
         if (Settings.AltQHotkey)
@@ -221,42 +222,65 @@ internal sealed class TrayApp : IDisposable
 
     /// <summary>
     /// 切换模式（在后台线程执行）。BIOS 的自定义档位不保存风扇全速开关，切到自定义后按学到的值补写，
-    /// 效果与 Legion Zone 应用自定义模式一致；离开自定义时 BIOS 会自动关闭全速，不需要处理。
+    /// 效果与 Legion Zone 应用自定义模式一致；切到其他模式时确保全速关闭
+    /// （旧机型 BIOS 会自动关闭，新机型不确定，与 Lenovo Legion Toolkit 一样主动关闭）。
     /// </summary>
     private static FanMode ApplyMode(FanMode mode)
     {
         var actual = LenovoGameZone.SetMode(mode);
-        if (actual == FanMode.Custom && Settings.CustomFanFullSpeed is { } fullSpeed)
+        try
         {
-            try
+            if (actual == FanMode.Custom)
             {
-                LenovoGameZone.SetFanFullSpeed(fullSpeed);
+                if (Settings.CustomFanFullSpeed is { } fullSpeed)
+                    LenovoGameZone.SetFanFullSpeed(fullSpeed);
             }
-            catch (Exception ex)
+            else
             {
-                // 模式已经切换成功，全速开关写入失败不影响结果
-                CrashLog.Write("设置自定义模式的风扇全速开关失败", ex);
+                TurnOffFullSpeedOutsideCustom();
             }
+        }
+        catch (Exception ex)
+        {
+            // 模式已经切换成功，全速开关写入失败不影响结果
+            CrashLog.Write("切换模式后设置风扇全速开关失败", ex);
         }
         return actual;
     }
 
+    /// <summary>非自定义模式下风扇全速仍开着时关闭它（只有自定义模式才有全速设置）。</summary>
+    private static void TurnOffFullSpeedOutsideCustom()
+    {
+        if (LenovoGameZone.GetFanFullSpeed() is true)
+        {
+            LenovoGameZone.SetFanFullSpeed(false);
+            TestLog.Write("非自定义模式下风扇全速仍开着，已关闭");
+        }
+    }
+
     /// <summary>
-    /// 同步自定义模式的风扇全速开关，当前不是自定义模式时不处理：
+    /// 同步风扇全速开关。当前不是自定义模式时，Legion Zone 没有运行就确保全速关闭；是自定义模式时：
     /// Legion Zone 正在运行时，它已按用户的配置写入，从固件读出并记住（延迟读取，避免它刚切换、还没写入时读到旧值）；
     /// Legion Zone 没有运行时，按记住的值补写。BIOS 重启后仍保持自定义档位，但会清掉全速开关，
     /// Fn+Q 从外部切到自定义时也不会恢复，所以启动、收到模式事件和打开菜单时都要同步。
     /// </summary>
     private void SyncCustomFanFullSpeed()
     {
-        if (_currentMode != FanMode.Custom)
+        var mode = _currentMode;
+        if (mode == FanMode.Unknown)
             return;
 
         _ = Task.Run(async () =>
         {
             try
             {
-                if (IsLegionZoneRunning())
+                if (mode != FanMode.Custom)
+                {
+                    // Fn+Q 等外部切换离开自定义后，确保全速关闭；Legion Zone 运行时由它自己管理
+                    if (!IsLegionZoneRunning())
+                        TurnOffFullSpeedOutsideCustom();
+                }
+                else if (IsLegionZoneRunning())
                 {
                     await Task.Delay(LearnDelay);
                     if (_currentMode == FanMode.Custom && LenovoGameZone.GetFanFullSpeed() is { } fullSpeed
@@ -345,6 +369,12 @@ internal sealed class TrayApp : IDisposable
             return;
 
         _currentMode = mode;
+        // 固件正处于自定义模式，说明一定支持（检测接口读不到时的兜底，比如未知的新机型）
+        if (mode == FanMode.Custom && !_supportsCustomMode)
+        {
+            TestLog.Write("当前处于自定义模式，显示自定义选项");
+            SetCustomModeAvailable(true);
+        }
         UpdateMenuIcons();
         UpdateTrayIcon();
         _trayIcon.ToolTip = $"散热模式：{mode.DisplayName}{Diagnostics.Label}";

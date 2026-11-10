@@ -1,0 +1,12 @@
+{
+  "name": "diag-lfmt",
+  "private": true,
+  "description": "LegionFanModeTool 测试版诊断信息接收接口（Cloudflare Worker + D1）",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "schema": "wrangler d1 execute diag-lfmt --remote --file=schema.sql"
+  },
+  "devDependencies": {
+    "wrangler": "4.158.0"
+  }
+}

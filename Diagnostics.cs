@@ -9,8 +9,8 @@ using Microsoft.Win32;
 namespace LegionFanModeTool;
 
 /// <summary>
-/// 测试版专用的诊断信息：读取或切换模式后，把系统、机型和 Lenovo WMI 接口情况
-/// 追加到 EXE 同目录的 LegionFanModeTool.log。
+/// 测试版专用的诊断信息：读取或切换模式后，收集系统、机型和 Lenovo WMI 接口情况，
+/// 写入测试日志并由 <see cref="DiagUpload"/> 上传。
 /// 只在用 -p:Diagnostics=true 构建时生效：正式版没有 DIAGNOSTICS 符号，
 /// <see cref="ConditionalAttribute"/> 让编译器移除所有调用，方法体也是空的。
 /// 不收集序列号、UUID、账号等个人信息。
@@ -46,6 +46,10 @@ internal static class Diagnostics
             var text = await Task.Run(() => Collect(operation, result, error));
             TestLog.Write(text);
             TestLog.Write($"诊断信息收集完成：{operation}");
+            if (error is not null)
+                DiagUpload.FlushNow("error");
+            else
+                DiagUpload.Schedule(operation.StartsWith("切换", StringComparison.Ordinal) ? "switch" : "startup");
         }
         catch (Exception ex)
         {
@@ -73,8 +77,7 @@ internal static class Diagnostics
         sb.AppendLine().AppendLine("[系统]");
         Section(sb, () =>
         {
-            using var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion");
-            sb.AppendLine(CultureInfo.InvariantCulture, $"Windows：{key?.GetValue("ProductName")} {key?.GetValue("DisplayVersion")}，内部版本 {key?.GetValue("CurrentBuild")}.{key?.GetValue("UBR")}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"Windows：{DiagUpload.WindowsDescription()}");
             sb.AppendLine(CultureInfo.InvariantCulture, $"架构：{System.Runtime.InteropServices.RuntimeInformation.OSArchitecture}，.NET {Environment.Version}");
         });
 
@@ -87,6 +90,8 @@ internal static class Diagnostics
             var model = DeviceModel.DisplayName;
             sb.AppendLine(CultureInfo.InvariantCulture, $"显示型号：{(model is null ? "（未映射，不显示）" : model.Model + " " + model.Badge)}");
             sb.AppendLine(CultureInfo.InvariantCulture, $"已学到的自定义模式风扇全速：{Settings.CustomFanFullSpeed?.ToString() ?? "未学到"}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"支持的散热模式：{DescribeModes(LenovoGameZone.GetSupportedModeMask())}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"风扇全速开关（当前）：{LenovoGameZone.GetFanFullSpeed()?.ToString() ?? "无法读取"}");
         });
 
         sb.AppendLine().AppendLine("[Legion Zone]");
@@ -161,9 +166,19 @@ internal static class Diagnostics
             catch (Exception ex)
             {
                 sb.AppendLine(CultureInfo.InvariantCulture, $"{method.Name}：失败 {ex.GetType().Name} {ex.Message}");
-                TestLog.Write($"WMI 诊断查询失败：{className}.{method.Name}", ex);
+                // 多数是本机型不支持的可选查询（"无效的对象"），只记录原因，不作为异常上报
+                TestLog.Write($"WMI 诊断查询失败：{className}.{method.Name}：{ex.GetType().Name} {ex.Message.Trim()}");
             }
         }
+    }
+
+    private static string DescribeModes(uint? mask)
+    {
+        if (mask is not { } bits)
+            return "无法读取";
+        var names = new (int Bit, string Name)[] { (0, "安静"), (1, "均衡"), (2, "野兽"), (4, "极致"), (16, "自定义") }
+            .Where(m => (bits & (1u << m.Bit)) != 0).Select(m => m.Name);
+        return $"0x{bits:X}（{string.Join("、", names)}）";
     }
 
     /// <summary>WMI 返回值可能是数组（如字节表），展开成逗号分隔。</summary>
